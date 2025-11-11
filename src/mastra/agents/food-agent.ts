@@ -29,7 +29,7 @@ export const foodAgent = new Agent({
       • 是否符合饮食偏好（如：素食/低碳/无麸质）
     - 如需更多选项，提示用户可更换食材或指定菜系。
 
-    语言：跟随用户语言。如果用户使用中文，则用中文回答。
+    语言：中文回答。
   `,
   model: 'openai/gpt-4o-mini',
   tools: { recipeTool },
