@@ -13,4 +13,5 @@ directory = "./dist"
 
 [build]
 command = "pnpm install && pnpm run build"
-assets = { directory = "./dist" }
+# assets = { directory = "./dist" }
+upload = { format = "modules", dir = "./dist", main = "worker.js", rules = [] }
