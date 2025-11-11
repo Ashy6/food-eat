@@ -1,19 +1,9 @@
-# Cloudflare Workers 配置
+# Cloudflare Workers 配置（仅 Workers 服务）
 name = "mastra-food-app"
-# 指向 Mastra 输出的入口文件
-main = ".mastra/output/index.mjs"
+# 直接使用我们的 Worker 入口（TypeScript 会由 Wrangler 自动编译）
+main = "src/worker.ts"
 compatibility_date = "2025-11-11"
-node_compat = true
+compatibility_flags = ["nodejs_compat"]
 
 [observability]
 enabled = true
-
-[build]
-# 保留你的构建命令（Mastra 会生成 .mastra/output）
-command = "pnpm install && pnpm run build"
-
-# instruct Wrangler to upload the already-built modules from .mastra/output
-[upload]
-format = "modules"
-dir = ".mastra/output"
-main = "index.mjs"
