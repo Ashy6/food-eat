@@ -21,8 +21,22 @@ async function handleChat(input: ChatInput) {
   try {
     const threadId = input.threadId || `thread-${Date.now()}`;
 
+    // Prepare language instruction based on input.language
+    let languageInstruction = '';
+    if (input.language === 'en-US') {
+      languageInstruction = '\n\n**Language preference: English (en-US). You MUST respond entirely in English.**';
+    } else if (input.language === 'zh-CN') {
+      languageInstruction = '\n\n**语言偏好：简体中文 (zh-CN)。你必须完全用中文回答。**';
+    } else {
+      // Default to Chinese if no language specified
+      languageInstruction = '\n\n**语言偏好：简体中文 (zh-CN)。你必须完全用中文回答。**';
+    }
+
+    // Combine user message with language instruction
+    const messageWithLanguage = input.message + languageInstruction;
+
     // 调用 chat agent
-    const response = await chatAgent.generate(input.message, {
+    const response = await chatAgent.generate(messageWithLanguage, {
       threadId,
     });
 

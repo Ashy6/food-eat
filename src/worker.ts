@@ -33,6 +33,7 @@ type ChatInput = {
   message: string;
   threadId?: string;
   model?: string;
+  language?: 'zh-CN' | 'en-US';
 };
 
 export interface Env {
@@ -130,9 +131,24 @@ async function getRecipes(input: RecipeInput) {
 
 async function handleChat(input: ChatInput) {
   const threadId = input.threadId || `thread-${Date.now()}`;
+
+  // Prepare language instruction based on input.language
+  let languageInstruction = '';
+  if (input.language === 'en-US') {
+    languageInstruction = '\n\n**Language preference: English (en-US). You MUST respond entirely in English.**';
+  } else if (input.language === 'zh-CN') {
+    languageInstruction = '\n\n**语言偏好：简体中文 (zh-CN)。你必须完全用中文回答。**';
+  } else {
+    // Default to Chinese if no language specified
+    languageInstruction = '\n\n**语言偏好：简体中文 (zh-CN)。你必须完全用中文回答。**';
+  }
+
+  // Combine user message with language instruction
+  const messageWithLanguage = input.message + languageInstruction;
+
   try {
     // 调用 chat agent
-    const response = await chatAgent.generate(input.message, {
+    const response = await chatAgent.generate(messageWithLanguage, {
       threadId,
     });
 
@@ -141,6 +157,7 @@ async function handleChat(input: ChatInput) {
       response: response.text || '',
       threadId,
       model: input.model || 'gpt-4o-mini',
+      language: input.language,
     };
   } catch (error: any) {
     console.error('Chat error:', error);
@@ -254,15 +271,19 @@ export default {
         }
 
         const body = await request.json().catch(() => ({}));
+        const language = body.language as 'zh-CN' | 'en-US' | undefined;
         const chatInput: ChatInput = {
           message: body.message || '',
           threadId: body.threadId,
           model: body.model,
+          language: language === 'zh-CN' || language === 'en-US' ? language : undefined,
         };
 
         if (!chatInput.message) {
+          const isChinese = !chatInput.language || chatInput.language === 'zh-CN';
+          const errorMsg = isChinese ? '消息不能为空' : 'Message cannot be empty';
           return new Response(
-            JSON.stringify({ error: '消息不能为空' }),
+            JSON.stringify({ error: errorMsg }),
             { status: 400, headers: { 'content-type': 'application/json; charset=utf-8', ...corsHeaders } }
           );
         }
