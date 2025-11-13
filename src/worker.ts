@@ -1,9 +1,15 @@
-// Cloudflare Worker：公开一个 HTTP 接口，直接调用 recipeTool 获取菜谱数据
+// Cloudflare Worker：公开 HTTP 接口
 // 路由：
-// - GET /api/recipes?ingredients=鸡胸肉,西兰花&category=清淡的&cuisine=广东菜&limit=4
-// - POST /api/recipes  { ingredients, category, cuisine, taste, timeBudget, servings, equipment, limit }
+// - GET /api/recipes - 获取食谱
+// - POST /api/recipes - 搜索食谱
+// - POST /api/chat - 聊天对话
+// - GET /api/models - 获取可用模型列表
 
 import { recipeTool } from './mastra/tools/recipe-tool';
+import { translateRecipes } from './utils/translator';
+import { MESSAGES, AVAILABLE_MODELS } from './constants/messages';
+import type { Recipe } from './types';
+import { chatAgent } from './mastra/agents/chat-agent';
 
 type RecipeInput = {
   ingredients?: string;
@@ -23,7 +29,15 @@ type FrontendInput = {
   limit?: number;
 };
 
-export interface Env {}
+type ChatInput = {
+  message: string;
+  threadId?: string;
+  model?: string;
+};
+
+export interface Env {
+  OPENAI_API_KEY?: string;
+}
 
 // 中文 → TheMealDB 关键词映射（尽量覆盖常见项）
 const ingredientMap: Record<string, string> = {
@@ -52,7 +66,7 @@ const ingredientMap: Record<string, string> = {
 const categoryMap: Record<string, string | undefined> = {
   '素食': 'Vegetarian',
   '素食的': 'Vegetarian',
-  '清淡': undefined, // TheMealDB 无“清淡”类别，跳过以避免误筛
+  '清淡': undefined, // TheMealDB 无"清淡"类别，跳过以避免误筛
   '清淡的': undefined,
   '海鲜': 'Seafood',
   '鸡肉': 'Chicken',
@@ -140,10 +154,43 @@ async function getRecipes(input: RecipeInput) {
     runtimeContext: {},
   } as any);
 
-  const names = (result.recipes || []).map((r: any) => r.name);
-  const head = `找到 ${names.length} 道候选菜：${names.slice(0, 5).join('、')}`;
+  // 翻译食谱到中文
+  let recipes = result.recipes || [];
+  if (recipes.length > 0) {
+    console.log(MESSAGES.LOG.TRANSLATING_RECIPES(recipes.length));
+    recipes = await translateRecipes(recipes);
+  }
 
-  return { suggestions: head, recipes: result.recipes, source: result.source };
+  const names = recipes.map((r: Recipe) => r.strMeal || '未知菜品');
+  const head = recipes.length > 0
+    ? MESSAGES.RECIPES_FOUND(names.length, names)
+    : MESSAGES.NO_RECIPES_FOUND;
+
+  return { suggestions: head, recipes, source: result.source };
+}
+
+async function handleChat(input: ChatInput) {
+  try {
+    const threadId = input.threadId || `thread-${Date.now()}`;
+
+    // 调用 chat agent
+    const response = await chatAgent.generate(input.message, {
+      threadId,
+    });
+
+    return {
+      success: true,
+      response: response.text || '',
+      threadId,
+      model: input.model || 'gpt-4o-mini',
+    };
+  } catch (error: any) {
+    console.error('Chat error:', error);
+    return {
+      success: false,
+      error: error?.message || MESSAGES.ERROR.UNKNOWN,
+    };
+  }
 }
 
 function parseQuery(search: URLSearchParams): FrontendInput {
@@ -163,10 +210,24 @@ function parseQuery(search: URLSearchParams): FrontendInput {
   };
 }
 
+// CORS headers
+const corsHeaders = {
+  'Access-Control-Allow-Origin': '*',
+  'Access-Control-Allow-Methods': 'GET, POST, OPTIONS',
+  'Access-Control-Allow-Headers': 'Content-Type',
+};
+
 export default {
-  async fetch(request: Request, _env: Env): Promise<Response> {
+  async fetch(request: Request, env: Env): Promise<Response> {
+    // 处理 OPTIONS 请求 (CORS preflight)
+    if (request.method === 'OPTIONS') {
+      return new Response(null, { headers: corsHeaders });
+    }
+
     try {
       const url = new URL(request.url);
+
+      // 食谱搜索 API
       if (url.pathname === '/api/recipes') {
         let frontInput: FrontendInput = {};
         if (request.method === 'GET') {
@@ -184,7 +245,10 @@ export default {
             limit: typeof body.limit === 'number' ? body.limit : undefined,
           };
         } else {
-          return new Response('Method Not Allowed', { status: 405 });
+          return new Response(
+            JSON.stringify({ error: MESSAGES.ERROR.METHOD_NOT_ALLOWED }),
+            { status: 405, headers: { 'content-type': 'application/json; charset=utf-8', ...corsHeaders } }
+          );
         }
 
         // 中文输入标准化到 TheMealDB 可识别的英文关键词
@@ -195,7 +259,58 @@ export default {
           JSON.stringify({ ...data, request: meta }),
           {
             status: 200,
-            headers: { 'content-type': 'application/json; charset=utf-8' },
+            headers: { 'content-type': 'application/json; charset=utf-8', ...corsHeaders },
+          },
+        );
+      }
+
+      // 聊天 API
+      if (url.pathname === '/api/chat') {
+        if (request.method !== 'POST') {
+          return new Response(
+            JSON.stringify({ error: MESSAGES.ERROR.METHOD_NOT_ALLOWED }),
+            { status: 405, headers: { 'content-type': 'application/json; charset=utf-8', ...corsHeaders } }
+          );
+        }
+
+        const body = await request.json().catch(() => ({}));
+        const chatInput: ChatInput = {
+          message: body.message || '',
+          threadId: body.threadId,
+          model: body.model,
+        };
+
+        if (!chatInput.message) {
+          return new Response(
+            JSON.stringify({ error: '消息不能为空' }),
+            { status: 400, headers: { 'content-type': 'application/json; charset=utf-8', ...corsHeaders } }
+          );
+        }
+
+        const result = await handleChat(chatInput);
+        return new Response(
+          JSON.stringify(result),
+          {
+            status: result.success ? 200 : 500,
+            headers: { 'content-type': 'application/json; charset=utf-8', ...corsHeaders },
+          },
+        );
+      }
+
+      // 模型列表 API
+      if (url.pathname === '/api/models') {
+        if (request.method !== 'GET') {
+          return new Response(
+            JSON.stringify({ error: MESSAGES.ERROR.METHOD_NOT_ALLOWED }),
+            { status: 405, headers: { 'content-type': 'application/json; charset=utf-8', ...corsHeaders } }
+          );
+        }
+
+        return new Response(
+          JSON.stringify({ models: AVAILABLE_MODELS }),
+          {
+            status: 200,
+            headers: { 'content-type': 'application/json; charset=utf-8', ...corsHeaders },
           },
         );
       }
@@ -203,15 +318,15 @@ export default {
       // 默认返回说明
       return new Response(
         JSON.stringify({
-          message:
-            'Use GET /api/recipes or POST /api/recipes with { ingredients, category, cuisine, taste, timeBudget, servings, equipment, limit }',
+          message: MESSAGES.API_WELCOME,
         }),
-        { status: 200, headers: { 'content-type': 'application/json; charset=utf-8' } },
+        { status: 200, headers: { 'content-type': 'application/json; charset=utf-8', ...corsHeaders } },
       );
     } catch (err: any) {
+      console.error('Worker error:', err);
       return new Response(
-        JSON.stringify({ error: err?.message || 'Internal Error' }),
-        { status: 500, headers: { 'content-type': 'application/json; charset=utf-8' } },
+        JSON.stringify({ error: err?.message || MESSAGES.ERROR.INTERNAL }),
+        { status: 500, headers: { 'content-type': 'application/json; charset=utf-8', ...corsHeaders } },
       );
     }
   },
