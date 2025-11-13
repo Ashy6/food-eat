@@ -1,7 +1,6 @@
 // 通用聊天智能体：负责处理用户的一般性对话和问答
 import { Agent } from '@mastra/core/agent';
 import { Memory } from '@mastra/memory';
-import { LibSQLStore } from '@mastra/libsql';
 import { recipeTool } from '../tools/recipe-tool';
 
 export const chatAgent = new Agent({
@@ -38,9 +37,5 @@ export const chatAgent = new Agent({
   model: 'openai/gpt-4o-mini',
   tools: { recipeTool },
   // 记忆存储：用于保存会话历史
-  memory: new Memory({
-    storage: new LibSQLStore({
-      url: ':memory:',
-    }),
-  }),
+  memory: new Memory(),
 });

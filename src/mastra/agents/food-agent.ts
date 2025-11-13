@@ -3,7 +3,6 @@
 // - 质量保障：接入多个 scorers（工具调用、完整性、饮食符合度、食材使用、时间预算）进行评估
 import { Agent } from '@mastra/core/agent';
 import { Memory } from '@mastra/memory';
-import { LibSQLStore } from '@mastra/libsql';
 import { recipeTool } from '../tools/recipe-tool';
 import { scorers as foodScorers } from '../scorers/food-scorer';
 
@@ -67,9 +66,5 @@ export const foodAgent = new Agent({
     },
   },
   // 记忆存储：用于保存会话相关信息（可改为持久化文件）
-  memory: new Memory({
-    storage: new LibSQLStore({
-      url: 'file:../mastra.db',
-    }),
-  }),
+  memory: new Memory(),
 });
