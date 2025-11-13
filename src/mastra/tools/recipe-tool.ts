@@ -49,28 +49,29 @@ async function fetchDetailsFor(ids: string[]): Promise<MealDetail[]> {
 async function filterByIngredient(ingredient: string): Promise<MealSummary[]> {
   const resp = await fetch(`https://www.themealdb.com/api/json/v1/1/filter.php?i=${encodeURIComponent(ingredient)}`);
   const json = await resp.json();
-  return (json?.meals || []) as MealSummary[];
+  return Array.isArray(json?.meals) ? (json.meals as MealSummary[]) : [];
 }
 
 // 按类别筛选（filter.php?c=），如 Vegetarian、Seafood
 async function filterByCategory(category: string): Promise<MealSummary[]> {
   const resp = await fetch(`https://www.themealdb.com/api/json/v1/1/filter.php?c=${encodeURIComponent(category)}`);
   const json = await resp.json();
-  return (json?.meals || []) as MealSummary[];
+  return Array.isArray(json?.meals) ? (json.meals as MealSummary[]) : [];
 }
 
 // 按菜系/地区筛选（filter.php?a=），如 Chinese、Italian
 async function filterByArea(area: string): Promise<MealSummary[]> {
   const resp = await fetch(`https://www.themealdb.com/api/json/v1/1/filter.php?a=${encodeURIComponent(area)}`);
   const json = await resp.json();
-  return (json?.meals || []) as MealSummary[];
+  return Array.isArray(json?.meals) ? (json.meals as MealSummary[]) : [];
 }
 
 // 随机选取多道菜（randomselection.php），直接返回详情列表
 async function randomSelection(): Promise<MealDetail[]> {
   const resp = await fetch('https://www.themealdb.com/api/json/v1/1/randomselection.php');
   const json = await resp.json();
-  const meals = (json?.meals || []) as MealDetail[];
+  const mealsRaw = json?.meals;
+  const meals = Array.isArray(mealsRaw) ? (mealsRaw as MealDetail[]) : [];
   return meals;
 }
 
@@ -78,7 +79,8 @@ async function randomSelection(): Promise<MealDetail[]> {
 async function searchByName(query: string): Promise<MealDetail[]> {
   const resp = await fetch(`https://www.themealdb.com/api/json/v1/1/search.php?s=${encodeURIComponent(query)}`);
   const json = await resp.json();
-  const meals = (json?.meals || []) as MealDetail[];
+  const mealsRaw = json?.meals;
+  const meals = Array.isArray(mealsRaw) ? (mealsRaw as MealDetail[]) : [];
   return meals;
 }
 
