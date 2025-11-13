@@ -9,6 +9,7 @@ const inputSchema = z.object({
   category: z.string().optional(),
   cuisine: z.string().optional(),
   limit: z.number().int().min(1).max(10).default(5).optional(),
+  lang: z.enum(['zh', 'en']).default('zh').optional(),
 });
 
 const outputSchema = z.object({
@@ -35,14 +36,16 @@ const fetchRecipes = createStep({
   inputSchema,
   outputSchema,
   execute: async ({ inputData }) => {
-    const { ingredients, category, cuisine, limit } = inputData || {};
+    const { ingredients, category, cuisine, limit, lang } = inputData || {};
     const lim = typeof limit === 'number' ? limit : 5;
     const result = await recipeTool.execute({
       context: { ingredients, category, cuisine, limit: lim },
       runtimeContext: {},
     } as any);
     const names = (result.recipes || []).map((r) => r.name);
-    const head = `找到 ${names.length} 道候选菜：${names.slice(0, 5).join('、')}`;
+    const head = (lang === 'en')
+      ? `Found ${names.length} candidate dishes: ${names.slice(0, 5).join(', ')}`
+      : `找到 ${names.length} 道候选菜：${names.slice(0, 5).join('、')}`;
     return { suggestions: head, recipes: result.recipes, source: result.source };
   },
 });

@@ -1,18 +1,45 @@
 /**
- * 中文消息常量
- * 集中管理所有 API 响应和错误消息
+ * 双语消息常量
+ * 集中管理所有 API 响应和错误消息（中文/英文）
  */
+
+type Language = 'zh-CN' | 'en-US' | undefined;
 
 export const MESSAGES = {
   // API 响应消息
-  RECIPES_FOUND: (count: number, names: string[]) => {
-    const displayNames = names.slice(0, 5).join('、');
-    return `找到 ${count} 道候选菜：${displayNames}${count > 5 ? '等' : ''}`;
+  RECIPES_FOUND: (count: number, names: string[], language?: Language) => {
+    const isChinese = !language || language === 'zh-CN';
+    if (isChinese) {
+      const displayNames = names.slice(0, 5).join('、');
+      return `找到 ${count} 道候选菜：${displayNames}${count > 5 ? '等' : ''}`;
+    } else {
+      const displayNames = names.slice(0, 5).join(', ');
+      return `Found ${count} recipe${count > 1 ? 's' : ''}: ${displayNames}${count > 5 ? ', etc.' : ''}`;
+    }
   },
 
-  RANDOM_RECIPES: (count: number) => `已为您随机推荐 ${count} 道菜品`,
+  RANDOM_RECIPES: (count: number, language?: Language) => {
+    const isChinese = !language || language === 'zh-CN';
+    return isChinese
+      ? `已为您随机推荐 ${count} 道菜品`
+      : `Randomly recommended ${count} recipe${count > 1 ? 's' : ''} for you`;
+  },
 
-  NO_RECIPES_FOUND: '抱歉，没有找到符合条件的食谱',
+  NO_RECIPES_FOUND: (language?: Language) => {
+    const isChinese = !language || language === 'zh-CN';
+    return isChinese
+      ? '抱歉，没有找到符合条件的食谱'
+      : 'Sorry, no recipes found matching your criteria';
+  },
+
+  VALIDATION_ERROR: {
+    LIMIT_ONLY: (language?: Language) => {
+      const isChinese = !language || language === 'zh-CN';
+      return isChinese
+        ? '请至少填写一个食材 / 分类 / 菜系'
+        : 'Please provide at least one ingredient, category, or cuisine';
+    },
+  },
 
   // API 欢迎消息
   API_WELCOME: `欢迎使用今天吃什么 API！
@@ -36,15 +63,24 @@ export const MESSAGES = {
 
   // 错误消息
   ERROR: {
-    INTERNAL: '服务器内部错误，请稍后重试',
-    INVALID_REQUEST: '请求参数格式错误',
+    INTERNAL: (language?: Language) => {
+      const isChinese = !language || language === 'zh-CN';
+      return isChinese ? '服务器内部错误，请稍后重试' : 'Internal server error, please try again later';
+    },
+    INVALID_REQUEST: (language?: Language) => {
+      const isChinese = !language || language === 'zh-CN';
+      return isChinese ? '请求参数格式错误' : 'Invalid request parameters';
+    },
     NO_API_KEY: '未配置 OpenAI API 密钥',
     TRANSLATION_FAILED: '翻译失败，返回原始内容',
     FETCH_FAILED: '获取食谱失败',
     UNKNOWN: '未知错误',
     WORKFLOW_FAILED: '工作流执行失败',
     TOOL_EXECUTION_FAILED: '工具执行失败',
-    METHOD_NOT_ALLOWED: '不支持的请求方法',
+    METHOD_NOT_ALLOWED: (language?: Language) => {
+      const isChinese = !language || language === 'zh-CN';
+      return isChinese ? '不支持的请求方法' : 'Method not allowed';
+    },
   },
 
   // 成功消息

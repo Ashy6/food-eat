@@ -14,6 +14,8 @@ type RecipeInput = {
   category?: string;
   cuisine?: string;
   limit?: number;
+  model?: string;
+  language?: 'zh-CN' | 'en-US';
 };
 
 type FrontendInput = {
@@ -25,6 +27,8 @@ type FrontendInput = {
   servings?: number;
   equipment?: string[];
   limit?: number;
+  model?: string;
+  language?: 'zh-CN' | 'en-US';
 };
 
 function normalizeChinese(input: FrontendInput): { normalized: RecipeInput; meta: Record<string, any> } {
@@ -57,6 +61,8 @@ function normalizeChinese(input: FrontendInput): { normalized: RecipeInput; meta
     category: normalizedCategory,
     cuisine: normalizedCuisine,
     limit,
+    model: input.model,
+    language: input.language,
   };
 
   const meta = {
@@ -66,6 +72,8 @@ function normalizeChinese(input: FrontendInput): { normalized: RecipeInput; meta
     timeBudget: input.timeBudget,
     servings: input.servings,
     equipment: input.equipment,
+    model: input.model,
+    language: input.language,
   };
 
   return { normalized, meta };
@@ -73,7 +81,7 @@ function normalizeChinese(input: FrontendInput): { normalized: RecipeInput; meta
 
 async function getRecipes(input: RecipeInput) {
   const limitNum = typeof input.limit === 'number' ? input.limit : 5;
-  const { ingredients, category, cuisine } = input;
+  const { ingredients, category, cuisine, language } = input;
 
   const result = await recipeTool.execute({
     context: { ingredients, category, cuisine, limit: limitNum },
@@ -87,16 +95,21 @@ async function getRecipes(input: RecipeInput) {
     // recipes = await translateRecipes(recipes);
   }
 
+  const unknownDish = language === 'zh-CN' ? '未知菜品' : 'Unknown Dish';
   const names = recipes.map((r: Recipe) => (
     'strMeal' in r
-      ? (r.strMeal || '未知菜品')
-      : ('name' in r ? (r.name || '未知菜品') : '未知菜品')
+      ? (r.strMeal || unknownDish)
+      : ('name' in r ? (r.name || unknownDish) : unknownDish)
   ));
-  const head = recipes.length > 0
-    ? MESSAGES.RECIPES_FOUND(names.length, names)
-    : MESSAGES.NO_RECIPES_FOUND;
 
-  return { suggestions: head, recipes, source: result.source };
+  const head = recipes.length > 0
+    ? MESSAGES.RECIPES_FOUND(names.length, names, language)
+    : MESSAGES.NO_RECIPES_FOUND(language);
+
+  // Determine video platform based on language
+  const videoPlatform = language === 'zh-CN' ? 'bilibili' : 'youtube';
+
+  return { suggestions: head, recipes, source: result.source, videoPlatform };
 }
 
 function parseQuery(search: URLSearchParams): FrontendInput {
@@ -104,6 +117,7 @@ function parseQuery(search: URLSearchParams): FrontendInput {
   const limit = limitStr ? Number(limitStr) : undefined;
   const equipmentStr = search.get('equipment');
   const equipment = equipmentStr ? equipmentStr.split(/[，,、\s]+/).map((s) => s.trim()).filter(Boolean) : undefined;
+  const language = search.get('language') as 'zh-CN' | 'en-US' | null;
   return {
     ingredients: search.get('ingredients') ?? undefined,
     category: search.get('category') ?? undefined,
@@ -113,6 +127,8 @@ function parseQuery(search: URLSearchParams): FrontendInput {
     servings: search.get('servings') ? Number(search.get('servings')) : undefined,
     equipment,
     limit: Number.isFinite(limit as number) ? (limit as number) : undefined,
+    model: search.get('model') ?? undefined,
+    language: language === 'zh-CN' || language === 'en-US' ? language : undefined,
   };
 }
 
@@ -140,6 +156,7 @@ export const onRequest = async ({ request }: { request: Request }) => {
       frontInput = parseQuery(url.searchParams);
     } else if (request.method === 'POST') {
       const body = await request.json().catch(() => ({}));
+      const language = body.language as 'zh-CN' | 'en-US' | undefined;
       frontInput = {
         ingredients: body.ingredients,
         category: body.category,
@@ -149,11 +166,23 @@ export const onRequest = async ({ request }: { request: Request }) => {
         servings: typeof body.servings === 'number' ? body.servings : undefined,
         equipment: Array.isArray(body.equipment) ? body.equipment : undefined,
         limit: typeof body.limit === 'number' ? body.limit : undefined,
+        model: body.model,
+        language: language === 'zh-CN' || language === 'en-US' ? language : undefined,
       };
     } else {
+      const lang = undefined; // Could extract from headers if needed
       return new Response(
-        JSON.stringify({ error: MESSAGES.ERROR.METHOD_NOT_ALLOWED }),
+        JSON.stringify({ error: MESSAGES.ERROR.METHOD_NOT_ALLOWED(lang) }),
         { status: 405, headers: { 'content-type': 'application/json; charset=utf-8', ...corsHeaders } }
+      );
+    }
+
+    // Validate: require at least one search parameter besides limit
+    const { ingredients, category, cuisine, limit, language } = frontInput;
+    if (!ingredients && !category && !cuisine && limit !== undefined) {
+      return new Response(
+        JSON.stringify({ error: MESSAGES.VALIDATION_ERROR.LIMIT_ONLY(language) }),
+        { status: 400, headers: { 'content-type': 'application/json; charset=utf-8', ...corsHeaders } }
       );
     }
 
@@ -170,8 +199,9 @@ export const onRequest = async ({ request }: { request: Request }) => {
     );
   } catch (err: any) {
     console.error('Recipes API error:', err);
+    const lang = undefined; // Could be extracted from request if needed
     return new Response(
-      JSON.stringify({ error: err?.message || MESSAGES.ERROR.INTERNAL }),
+      JSON.stringify({ error: err?.message || MESSAGES.ERROR.INTERNAL(lang) }),
       {
         status: 500,
         headers: { 'content-type': 'application/json; charset=utf-8', ...corsHeaders },

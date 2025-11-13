@@ -7,6 +7,7 @@ type ChatInput = {
   message: string;
   threadId?: string;
   model?: string;
+  language?: 'zh-CN' | 'en-US';
 };
 
 // CORS headers
@@ -30,6 +31,7 @@ async function handleChat(input: ChatInput) {
       response: response.text || '',
       threadId,
       model: input.model || 'gpt-4o-mini',
+      language: input.language,
     };
   } catch (error: any) {
     console.error('Chat error:', error);
@@ -64,15 +66,19 @@ export const onRequest = async ({ request }: { request: Request }) => {
     }
 
     const body = await request.json().catch(() => ({}));
+    const language = body.language as 'zh-CN' | 'en-US' | undefined;
     const chatInput: ChatInput = {
       message: body.message || '',
       threadId: body.threadId,
       model: body.model,
+      language: language === 'zh-CN' || language === 'en-US' ? language : undefined,
     };
 
     if (!chatInput.message) {
+      const isChinese = !chatInput.language || chatInput.language === 'zh-CN';
+      const errorMsg = isChinese ? '消息不能为空' : 'Message cannot be empty';
       return new Response(
-        JSON.stringify({ error: '消息不能为空' }),
+        JSON.stringify({ error: errorMsg }),
         {
           status: 400,
           headers: {
