@@ -27,63 +27,6 @@ type FrontendInput = {
   limit?: number;
 };
 
-// 中文 → 英文映射
-const ingredientMap: Record<string, string> = {
-  '鸡胸肉': 'chicken',
-  '鸡肉': 'chicken',
-  '西兰花': 'broccoli',
-  '猪肉': 'pork',
-  '牛肉': 'beef',
-  '虾仁': 'shrimp',
-  '虾': 'shrimp',
-  '豆腐': 'tofu',
-  '香菇': 'shiitake',
-  '小白菜': 'bok choy',
-  '青椒': 'green pepper',
-  '辣椒': 'chili',
-  '蒜': 'garlic',
-  '大蒜': 'garlic',
-  '酱油': 'soy sauce',
-  '米饭': 'rice',
-  '鸡蛋': 'egg',
-  '番茄': 'tomato',
-  '西红柿': 'tomato',
-  '洋葱': 'onion',
-};
-
-const categoryMap: Record<string, string | undefined> = {
-  '素食': 'Vegetarian',
-  '素食的': 'Vegetarian',
-  '清淡': undefined,
-  '清淡的': undefined,
-  '海鲜': 'Seafood',
-  '鸡肉': 'Chicken',
-  '牛肉': 'Beef',
-  '猪肉': 'Pork',
-};
-
-const cuisineMap: Record<string, string> = {
-  '中国菜': 'Chinese',
-  '中华菜': 'Chinese',
-  '广东菜': 'Chinese',
-  '川菜': 'Chinese',
-  '鲁菜': 'Chinese',
-  '浙菜': 'Chinese',
-  '苏菜': 'Chinese',
-  '闽菜': 'Chinese',
-  '徽菜': 'Chinese',
-  '湘菜': 'Chinese',
-  '日本菜': 'Japanese',
-  '意大利菜': 'Italian',
-  '印度菜': 'Indian',
-  '法国菜': 'French',
-  '墨西哥菜': 'Mexican',
-  '美国菜': 'American',
-  '英国菜': 'British',
-  '泰国菜': 'Thai',
-  '越南菜': 'Vietnamese',
-};
-
 function normalizeChinese(input: FrontendInput): { normalized: RecipeInput; meta: Record<string, any> } {
   let normalizedIngredients: string | undefined;
   if (input.ingredients && input.ingredients.trim()) {
@@ -91,20 +34,20 @@ function normalizeChinese(input: FrontendInput): { normalized: RecipeInput; meta
       .split(/[，,、\s]+/)
       .map((t) => t.trim())
       .filter(Boolean);
-    const mapped = tokens.map((t) => ingredientMap[t] || t);
+    const mapped = tokens; // 取消限定：不再做中文到英文的固定映射，直接透传用户输入
     normalizedIngredients = mapped.join(',');
   }
 
   let normalizedCategory: string | undefined;
   if (input.category && input.category.trim()) {
     const c = input.category.trim();
-    normalizedCategory = categoryMap[c] ?? c;
+    normalizedCategory = c; // 取消限定：不再使用 categoryMap，直接透传
   }
 
   let normalizedCuisine: string | undefined;
   if (input.cuisine && input.cuisine.trim()) {
     const a = input.cuisine.trim();
-    normalizedCuisine = cuisineMap[a] ?? a;
+    normalizedCuisine = a; // 取消限定：不再使用 cuisineMap，直接透传
   }
 
   const limit = typeof input.limit === 'number' ? input.limit : undefined;
@@ -140,11 +83,15 @@ async function getRecipes(input: RecipeInput) {
   // 翻译食谱到中文
   let recipes = result.recipes || [];
   if (recipes.length > 0) {
-    console.log(MESSAGES.LOG.TRANSLATING_RECIPES(recipes.length));
-    recipes = await translateRecipes(recipes);
+    // console.log(MESSAGES.LOG.TRANSLATING_RECIPES(recipes.length));
+    // recipes = await translateRecipes(recipes);
   }
 
-  const names = recipes.map((r: Recipe) => r.strMeal || '未知菜品');
+  const names = recipes.map((r: Recipe) => (
+    'strMeal' in r
+      ? (r.strMeal || '未知菜品')
+      : ('name' in r ? (r.name || '未知菜品') : '未知菜品')
+  ));
   const head = recipes.length > 0
     ? MESSAGES.RECIPES_FOUND(names.length, names)
     : MESSAGES.NO_RECIPES_FOUND;

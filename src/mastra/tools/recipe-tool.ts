@@ -74,6 +74,14 @@ async function randomSelection(): Promise<MealDetail[]> {
   return meals;
 }
 
+// 新增：按名称搜索（search.php?s=），用于自由文本的潜在支持
+async function searchByName(query: string): Promise<MealDetail[]> {
+  const resp = await fetch(`https://www.themealdb.com/api/json/v1/1/search.php?s=${encodeURIComponent(query)}`);
+  const json = await resp.json();
+  const meals = (json?.meals || []) as MealDetail[];
+  return meals;
+}
+
 // Mastra 工具定义：根据输入筛选菜谱并返回结构化结果
 export const recipeTool = createTool({
   id: 'get-recipes',
@@ -122,10 +130,107 @@ export const recipeTool = createTool({
         // 取第一个食材作为筛选条件（API只支持单食材）
         const first = ingredients.split(',')[0].trim();
         summaries = await filterByIngredient(first);
+
+        // 若筛选结果为空，先尝试按名称搜索，再回退到随机推荐
+        if (!summaries.length) {
+          const byName = await searchByName(first);
+          if (byName.length) {
+            const recipes = byName.slice(0, limit ?? 5).map((meal) => ({
+              id: meal.idMeal,
+              name: meal.strMeal,
+              category: meal.strCategory || null,
+              area: meal.strArea || null,
+              tags: meal.strTags ? meal.strTags.split(',').map((t) => t.trim()).filter(Boolean) : null,
+              instructions: meal.strInstructions || null,
+              thumbnail: meal.strMealThumb || null,
+              youtube: meal.strYoutube || null,
+              ingredients: extractIngredients(meal),
+            }));
+            return { recipes, source: 'TheMealDB' as const };
+          }
+
+          const randoms = await randomSelection();
+          const recipes = randoms.slice(0, limit ?? 5).map((meal) => ({
+            id: meal.idMeal,
+            name: meal.strMeal,
+            category: meal.strCategory || null,
+            area: meal.strArea || null,
+            tags: meal.strTags ? meal.strTags.split(',').map((t) => t.trim()).filter(Boolean) : null,
+            instructions: meal.strInstructions || null,
+            thumbnail: meal.strMealThumb || null,
+            youtube: meal.strYoutube || null,
+            ingredients: extractIngredients(meal),
+          }));
+          return { recipes, source: 'TheMealDB' as const };
+        }
       } else if (category && category.trim()) {
-        summaries = await filterByCategory(category.trim());
+        const cat = category.trim();
+        summaries = await filterByCategory(cat);
+        if (!summaries.length) {
+          const byName = await searchByName(cat);
+          if (byName.length) {
+            const recipes = byName.slice(0, limit ?? 5).map((meal) => ({
+              id: meal.idMeal,
+              name: meal.strMeal,
+              category: meal.strCategory || null,
+              area: meal.strArea || null,
+              tags: meal.strTags ? meal.strTags.split(',').map((t) => t.trim()).filter(Boolean) : null,
+              instructions: meal.strInstructions || null,
+              thumbnail: meal.strMealThumb || null,
+              youtube: meal.strYoutube || null,
+              ingredients: extractIngredients(meal),
+            }));
+            return { recipes, source: 'TheMealDB' as const };
+          }
+
+          const randoms = await randomSelection();
+          const recipes = randoms.slice(0, limit ?? 5).map((meal) => ({
+            id: meal.idMeal,
+            name: meal.strMeal,
+            category: meal.strCategory || null,
+            area: meal.strArea || null,
+            tags: meal.strTags ? meal.strTags.split(',').map((t) => t.trim()).filter(Boolean) : null,
+            instructions: meal.strInstructions || null,
+            thumbnail: meal.strMealThumb || null,
+            youtube: meal.strYoutube || null,
+            ingredients: extractIngredients(meal),
+          }));
+          return { recipes, source: 'TheMealDB' as const };
+        }
       } else if (cuisine && cuisine.trim()) {
-        summaries = await filterByArea(cuisine.trim());
+        const area = cuisine.trim();
+        summaries = await filterByArea(area);
+        if (!summaries.length) {
+          const byName = await searchByName(area);
+          if (byName.length) {
+            const recipes = byName.slice(0, limit ?? 5).map((meal) => ({
+              id: meal.idMeal,
+              name: meal.strMeal,
+              category: meal.strCategory || null,
+              area: meal.strArea || null,
+              tags: meal.strTags ? meal.strTags.split(',').map((t) => t.trim()).filter(Boolean) : null,
+              instructions: meal.strInstructions || null,
+              thumbnail: meal.strMealThumb || null,
+              youtube: meal.strYoutube || null,
+              ingredients: extractIngredients(meal),
+            }));
+            return { recipes, source: 'TheMealDB' as const };
+          }
+
+          const randoms = await randomSelection();
+          const recipes = randoms.slice(0, limit ?? 5).map((meal) => ({
+            id: meal.idMeal,
+            name: meal.strMeal,
+            category: meal.strCategory || null,
+            area: meal.strArea || null,
+            tags: meal.strTags ? meal.strTags.split(',').map((t) => t.trim()).filter(Boolean) : null,
+            instructions: meal.strInstructions || null,
+            thumbnail: meal.strMealThumb || null,
+            youtube: meal.strYoutube || null,
+            ingredients: extractIngredients(meal),
+          }));
+          return { recipes, source: 'TheMealDB' as const };
+        }
       } else {
         // 无筛选条件时，直接使用随机选择结果（已是详情数据）
         const randoms = await randomSelection();
@@ -141,11 +246,6 @@ export const recipeTool = createTool({
           ingredients: extractIngredients(meal),
         }));
         return { recipes, source: 'TheMealDB' as const };
-      }
-
-      // 若筛选结果为空，返回空列表而不是报错
-      if (!summaries.length) {
-        return { recipes: [], source: 'TheMealDB' as const };
       }
 
       // 将摘要列表截取到期望数量后，再查详情并结构化返回
@@ -165,8 +265,20 @@ export const recipeTool = createTool({
 
       return { recipes, source: 'TheMealDB' as const };
     } catch (err) {
-      // 失败时优雅降级：返回空列表，避免影响 Agent 流程
-      return { recipes: [], source: 'TheMealDB' as const };
+      // 失败时优雅降级：返回随机推荐，避免影响 Agent 流程
+      const randoms = await randomSelection();
+      const recipes = randoms.slice(0, limit ?? 5).map((meal) => ({
+        id: meal.idMeal,
+        name: meal.strMeal,
+        category: meal.strCategory || null,
+        area: meal.strArea || null,
+        tags: meal.strTags ? meal.strTags.split(',').map((t) => t.trim()).filter(Boolean) : null,
+        instructions: meal.strInstructions || null,
+        thumbnail: meal.strMealThumb || null,
+        youtube: meal.strYoutube || null,
+        ingredients: extractIngredients(meal),
+      }));
+      return { recipes, source: 'TheMealDB' as const };
     }
   },
 });
