@@ -67,5 +67,9 @@ export const foodAgent = new Agent({
     },
   },
   // 记忆存储：用于保存会话相关信息（可改为持久化文件）
-  memory: new Memory(),
+  memory: new Memory({
+    storage: new LibSQLStore({
+      url: 'file:../mastra.db',
+    }),
+  }),
 });
