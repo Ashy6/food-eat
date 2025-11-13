@@ -129,8 +129,16 @@ async function getRecipes(input: RecipeInput) {
   return { suggestions: head, recipes, source: result.source };
 }
 
-async function handleChat(input: ChatInput) {
+async function handleChat(input: ChatInput, env?: Env) {
   const threadId = input.threadId || `thread-${Date.now()}`;
+
+  // Set OpenAI API key from environment if available
+  if (env?.OPENAI_API_KEY) {
+    // @ts-ignore - Setting global env for Mastra agents
+    globalThis.process = globalThis.process || {};
+    globalThis.process.env = globalThis.process.env || {};
+    globalThis.process.env.OPENAI_API_KEY = env.OPENAI_API_KEY;
+  }
 
   // Prepare language instruction based on input.language
   let languageInstruction = '';
@@ -167,24 +175,46 @@ async function handleChat(input: ChatInput) {
         context: { limit: 5 },
         runtimeContext: {},
       } as any);
+
+      const unknownDish = (!input.language || input.language === 'zh-CN') ? '未知菜品' : 'Unknown Dish';
       const names = (fallback.recipes || []).map((r: any) => (
-        'strMeal' in r ? (r.strMeal || '未知菜品') : ('name' in r ? (r.name || '未知菜品') : '未知菜品')
+        'strMeal' in r ? (r.strMeal || unknownDish) : ('name' in r ? (r.name || unknownDish) : unknownDish)
       ));
-      const text = names.length > 0
-        ? `当前模型不可用，我为您随机推荐这些菜品：${names.slice(0, 5).join('、')}。`
-        : '当前模型不可用，建议您稍后重试或指定食材/菜系以获取更多建议。';
+
+      // Generate bilingual fallback message
+      const isChinese = !input.language || input.language === 'zh-CN';
+      let text: string;
+
+      if (names.length > 0) {
+        const separator = isChinese ? '、' : ', ';
+        const prefix = isChinese
+          ? '当前模型不可用，我为您随机推荐这些菜品：'
+          : 'The model is currently unavailable. Here are some random dish recommendations: ';
+        const suffix = isChinese ? '。' : '.';
+        text = prefix + names.slice(0, 5).join(separator) + suffix;
+      } else {
+        text = isChinese
+          ? '当前模型不可用，建议您稍后重试或指定食材/菜系以获取更多建议。'
+          : 'The model is currently unavailable. Please try again later or specify ingredients/cuisine for more suggestions.';
+      }
+
       return {
         success: true,
         response: text,
         threadId,
         model: 'fallback',
+        language: input.language,
       };
     } catch (_) {
+      const isChinese = !input.language || input.language === 'zh-CN';
       return {
         success: true,
-        response: '当前模型不可用，建议您稍后重试或指定食材/菜系以获取更多建议。',
+        response: isChinese
+          ? '当前模型不可用，建议您稍后重试或指定食材/菜系以获取更多建议。'
+          : 'The model is currently unavailable. Please try again later or specify ingredients/cuisine for more suggestions.',
         threadId,
         model: 'fallback',
+        language: input.language,
       };
     }
   }
