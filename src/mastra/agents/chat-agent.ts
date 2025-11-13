@@ -38,9 +38,5 @@ export const chatAgent = new Agent({
   model: 'openai/gpt-4o-mini',
   tools: { recipeTool },
   // 记忆存储：用于保存会话历史
-  memory: new Memory({
-    storage: new LibSQLStore({
-      url: ':memory:',
-    }),
-  }),
+  memory: new Memory(),
 });
