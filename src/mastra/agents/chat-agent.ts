@@ -40,7 +40,7 @@ export const chatAgent = new Agent({
   // 记忆存储：用于保存会话历史
   memory: new Memory({
     storage: new LibSQLStore({
-      url: 'file:../mastra.db',
+      url: ':memory:',
     }),
   }),
 });

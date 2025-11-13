@@ -52,7 +52,7 @@ export const weatherAgent = new Agent({
   // 记忆存储：可切换为持久化文件存储
   memory: new Memory({
     storage: new LibSQLStore({
-      url: 'file:../mastra.db', // path is relative to the .mastra/output directory
+      url: ':memory:', // Cloudflare Workers 使用内存存储
     }),
   }),
 });
