@@ -66,13 +66,29 @@ async function filterByArea(area: string): Promise<MealSummary[]> {
   return Array.isArray(json?.meals) ? (json.meals as MealSummary[]) : [];
 }
 
-// 随机选取多道菜（randomselection.php），直接返回详情列表
+// 随机选取多道菜（改为调用随机单菜 random.php 多次，避免 randomselection.php 可能返回空）
 async function randomSelection(): Promise<MealDetail[]> {
-  const resp = await fetch('https://www.themealdb.com/api/json/v1/1/randomselection.php');
-  const json = await resp.json();
-  const mealsRaw = json?.meals;
-  const meals = Array.isArray(mealsRaw) ? (mealsRaw as MealDetail[]) : [];
-  return meals;
+  const results: MealDetail[] = [];
+  const maxCount = 10; // 兜底最多拿 10 道
+  const maxTries = 20; // 最多尝试次数，避免网络/空返回导致死循环
+  let tries = 0;
+  while (results.length < maxCount && tries < maxTries) {
+    tries += 1;
+    try {
+      const resp = await fetch('https://www.themealdb.com/api/json/v1/1/random.php');
+      const json = await resp.json();
+      const meal = (Array.isArray(json?.meals) ? (json.meals[0] as MealDetail) : null);
+      if (meal && meal.idMeal) {
+        // 去重
+        if (!results.find((m) => m.idMeal === meal.idMeal)) {
+          results.push(meal);
+        }
+      }
+    } catch (e) {
+      // 忽略单次错误，继续尝试
+    }
+  }
+  return results;
 }
 
 // 新增：按名称搜索（search.php?s=），用于自由文本的潜在支持

@@ -17,22 +17,22 @@ export const MESSAGES = {
   // API 欢迎消息
   API_WELCOME: `欢迎使用今天吃什么 API！
 
-使用方法：
-- GET /api/recipes - 获取随机食谱推荐
-- POST /api/recipes - 根据条件获取个性化推荐
-- POST /api/chat - 聊天对话
-- GET /api/models - 获取可用模型列表
+  使用方法：
+  - GET /api/recipes - 获取随机食谱推荐
+  - POST /api/recipes - 根据条件获取个性化推荐
+  - POST /api/chat - 聊天对话
+  - GET /api/models - 获取可用模型列表
 
-请求参数（POST /api/recipes）：
-{
-  "ingredients": ["食材1", "食材2"],  // 可选
-  "category": "分类",                // 可选：素食、海鲜、甜点等
-  "cuisine": "菜系",                 // 可选：中国、意大利、日本等
-  "taste": "口味偏好",              // 可选
-  "timeBudget": 30,                  // 可选：制作时间（分钟）
-  "servings": 2,                     // 可选：份数
-  "equipment": ["设备"]              // 可选：厨房设备
-}`,
+  请求参数（POST /api/recipes）：
+  {
+    "ingredients": ["食材1", "食材2"],  // 可选
+    "category": "分类",                // 可选：素食、海鲜、甜点等
+    "cuisine": "菜系",                 // 可选：中国、意大利、日本等
+    "taste": "口味偏好",              // 可选
+    "timeBudget": 30,                  // 可选：制作时间（分钟）
+    "servings": 2,                     // 可选：份数
+    "equipment": ["设备"]              // 可选：厨房设备
+  }`,
 
   // 错误消息
   ERROR: {

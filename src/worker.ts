@@ -103,6 +103,19 @@ async function getRecipes(input: RecipeInput) {
     // recipes = await translateRecipes(recipes);
   }
 
+  // 兜底：若为空则进行随机推荐，以保证每次都有答案
+  if (recipes.length === 0) {
+    try {
+      const fallback = await recipeTool.execute({
+        context: { limit: limitNum },
+        runtimeContext: {},
+      } as any);
+      recipes = fallback.recipes || [];
+    } catch (e) {
+      // 忽略兜底异常
+    }
+  }
+
   const names = recipes.map((r: Recipe) => (
     'strMeal' in r
       ? (r.strMeal || '未知菜品')
@@ -116,9 +129,8 @@ async function getRecipes(input: RecipeInput) {
 }
 
 async function handleChat(input: ChatInput) {
+  const threadId = input.threadId || `thread-${Date.now()}`;
   try {
-    const threadId = input.threadId || `thread-${Date.now()}`;
-
     // 调用 chat agent
     const response = await chatAgent.generate(input.message, {
       threadId,
@@ -132,10 +144,32 @@ async function handleChat(input: ChatInput) {
     };
   } catch (error: any) {
     console.error('Chat error:', error);
-    return {
-      success: false,
-      error: error?.message || MESSAGES.ERROR.UNKNOWN,
-    };
+    // 兜底：返回基于工具的随机菜谱建议，而不是报错
+    try {
+      const fallback = await recipeTool.execute({
+        context: { limit: 5 },
+        runtimeContext: {},
+      } as any);
+      const names = (fallback.recipes || []).map((r: any) => (
+        'strMeal' in r ? (r.strMeal || '未知菜品') : ('name' in r ? (r.name || '未知菜品') : '未知菜品')
+      ));
+      const text = names.length > 0
+        ? `当前模型不可用，我为您随机推荐这些菜品：${names.slice(0, 5).join('、')}。`
+        : '当前模型不可用，建议您稍后重试或指定食材/菜系以获取更多建议。';
+      return {
+        success: true,
+        response: text,
+        threadId,
+        model: 'fallback',
+      };
+    } catch (_) {
+      return {
+        success: true,
+        response: '当前模型不可用，建议您稍后重试或指定食材/菜系以获取更多建议。',
+        threadId,
+        model: 'fallback',
+      };
+    }
   }
 }
 

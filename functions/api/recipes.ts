@@ -126,7 +126,10 @@ const corsHeaders = {
 export const onRequest = async ({ request }: { request: Request }) => {
   // 处理 OPTIONS 请求 (CORS preflight)
   if (request.method === 'OPTIONS') {
-    return new Response(null, { headers: corsHeaders });
+    return new Response(null, {
+      status: 204,
+      headers: corsHeaders
+    });
   }
 
   try {
