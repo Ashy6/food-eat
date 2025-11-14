@@ -109,10 +109,12 @@ export const recipeTool = createTool({
   // - category: 菜品类别，如 Vegetarian
   // - cuisine: 菜系/地区，如 Chinese
   // - limit: 返回条数上限（1-10）
+  // - language: 语言选择（zh-CN 或 en-US）
   inputSchema: z.object({
     ingredients: z.string().describe('可用食材，逗号分隔，如"鸡肉, 西兰花"').optional(),
     category: z.string().describe('菜品类别，如"海鲜"、"素食的"').optional(),
     cuisine: z.string().describe('菜系/地区，如"粤菜"、"山西菜"').optional(),
+    language: z.enum(['zh-CN', 'en-US']).default('zh-CN').describe('语言选择（zh-CN 或 en-US）'),
     limit: z.number().min(1).max(10).default(5).describe('返回菜谱数量上限'),
   }),
   // 输出结构：包含标准化后的菜谱信息与来源标记
@@ -134,11 +136,12 @@ export const recipeTool = createTool({
   }),
   // 执行逻辑：优先使用筛选条件，否则走随机推荐
   execute: async ({ context }) => {
-    const { ingredients, category, cuisine, limit } = context as {
+    const { ingredients, category, cuisine, limit, language } = context as {
       ingredients?: string;
       category?: string;
       cuisine?: string;
       limit?: number;
+      language?: 'zh-CN' | 'en-US';
     };
 
     let summaries: MealSummary[] = [];

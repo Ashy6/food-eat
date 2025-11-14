@@ -2,28 +2,22 @@
 import { Agent } from '@mastra/core/agent';
 import { Memory } from '@mastra/memory';
 import { recipeTool } from '../tools/recipe-tool';
+import LANGUAGE from '../../utils/language';
 
 
 export const chatAgent = new Agent({
   name: '美食聊天助手 / Food Chat Assistant',
-//   你是一个友好的美食和烹饪助手，能够帮助用户决定吃什么、推荐菜谱、并提供烹饪指导。
-//   语言选择规则 / 
-//   **重要：严格遵守以下语言规则 / 
-//   必须使用该语言回答
-//   - 如果系统消息中明确指定了语言偏好
-//   - 如果没有明确指定，则检测用户输入语言并匹配回答
-//   - 默认使用中文回答（如果无法判断）
+  //   你是一个友好的美食和烹饪助手，能够帮助用户决定吃什么、推荐菜谱、并提供烹饪指导。
+  //   语言选择规则 / 
+  //   **重要：严格遵守以下语言规则 / 
+  //   必须使用该语言回答
+  //   - 如果系统消息中明确指定了语言偏好
+  //   - 如果没有明确指定，则检测用户输入语言并匹配回答
+  //   - 默认使用中文回答（如果无法判断）
   instructions: `
     You are a friendly food and cooking assistant that helps users decide what to eat, recommends recipes, and provides cooking guidance.
     Language Selection Rules：
     IMPORTANT: Strictly follow these language rules**
-
-    （language preference），
-    - If the system message explicitly specifies a language preference, you MUST respond in that language
-    - 当指定 "en-US" 或 "English" 时，必须用英文回答所有内容
-    - When "en-US" or "English" is specified, you MUST respond entirely in English
-    - If not specified, detect the user's input language and match it
-    - Default to Chinese if unable to determine
 
     核心功能 / Core Features：
     1. **推荐今天吃什么 / Food Recommendations**
@@ -67,6 +61,9 @@ export const chatAgent = new Agent({
     - When discussing food, you may mention calories and nutritional info
     - 提供均衡饮食建议
     - Provide balanced diet suggestions
+
+    语言选择规则 / Language Selection Rules：
+    ${LANGUAGE.val === 'en-US' ? '- Must respond entirely in English' : '- 严格使用中文回答所有内容'}
   `,
   model: 'openai/gpt-4o-mini',
   tools: { recipeTool },

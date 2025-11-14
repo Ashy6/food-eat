@@ -3,6 +3,7 @@ import { z } from 'zod';
 import { createToolCallAccuracyScorerCode } from '@mastra/evals/scorers/code';
 import { createCompletenessScorer } from '@mastra/evals/scorers/code';
 import { createScorer } from '@mastra/core/scores';
+import LANGUAGE from '../../utils/language';
 
 // 评估是否合理调用了 recipeTool
 export const toolCallAppropriatenessScorer = createToolCallAccuracyScorerCode({
@@ -16,12 +17,15 @@ export const completenessScorer = createCompletenessScorer();
 // LLM 评分：饮食限制是否被正确考虑（如：素食/低碳/无麸质等）
 export const dietaryComplianceScorer = createScorer({
   name: 'Dietary Compliance',
-  description: '检查建议是否遵守用户的饮食限制（素食、低碳、无麸质等）',
+  description: LANGUAGE.val === 'en-US'
+    ? 'Check if suggestions comply with user dietary restrictions (vegetarian, low-carb, gluten-free, etc.)'
+    : '检查建议是否遵守用户的饮食限制（素食、低碳、无麸质等）',
   type: 'agent',
   judge: {
     model: 'openai/gpt-4o-mini',
-    instructions:
-      '你是一个饮食限制评估专家。根据用户提供的饮食限制（如素食/低碳/无麸质等），判断助手的建议是否完全遵守这些限制。返回符合下方 schema 的 JSON。',
+    instructions: LANGUAGE.val === 'en-US'
+      ? 'You are a dietary restriction evaluation expert. Based on the dietary restrictions provided by the user (such as vegetarian/low-carb/gluten-free, etc.), determine if the assistant\'s suggestions fully comply with these restrictions. Return JSON that conforms to the schema below.'
+      : '你是一个饮食限制评估专家。根据用户提供的饮食限制（如素食/低碳/无麸质等），判断助手的建议是否完全遵守这些限制。返回符合下方 schema 的 JSON。',
   },
 })
   .preprocess(({ run }) => {
@@ -58,11 +62,15 @@ export const dietaryComplianceScorer = createScorer({
 // LLM 评分：是否合理利用了用户提供的食材
 export const ingredientsUsageScorer = createScorer({
   name: 'Ingredients Usage',
-  description: '检查建议是否优先/合理使用了用户提供的食材',
+  description: LANGUAGE.val === 'en-US'
+    ? 'Check if suggestions prioritize/reasonably use the ingredients provided by the user'
+    : '检查建议是否优先/合理使用了用户提供的食材',
   type: 'agent',
   judge: {
     model: 'openai/gpt-4o-mini',
-    instructions: '判断助手是否在建议中使用了用户提供的食材，并给出置信度。返回 JSON。',
+    instructions: LANGUAGE.val === 'en-US'
+      ? 'Determine if the assistant used the ingredients provided by the user in the suggestions and provide confidence level. Return JSON.'
+      : '判断助手是否在建议中使用了用户提供的食材，并给出置信度。返回 JSON。',
   },
 })
   .preprocess(({ run }) => {
@@ -99,11 +107,15 @@ export const ingredientsUsageScorer = createScorer({
 // LLM 评分：时间预算匹配（建议是否符合用户的时间预算）
 export const timeBudgetAlignmentScorer = createScorer({
   name: 'Time Budget Alignment',
-  description: '检查建议的时长是否与用户 timeBudget 大致匹配',
+  description: LANGUAGE.val === 'en-US'
+    ? 'Check if the suggested duration roughly matches the user\'s timeBudget'
+    : '检查建议的时长是否与用户 timeBudget 大致匹配',
   type: 'agent',
   judge: {
     model: 'openai/gpt-4o-mini',
-    instructions: '识别用户的 timeBudget（分钟），判断建议是否在预算内（合理误差±10分钟）。返回 JSON。',
+    instructions: LANGUAGE.val === 'en-US'
+      ? 'Identify the user\'s timeBudget (in minutes) and determine if the suggestions are within the budget (reasonable margin ±10 minutes). Return JSON.'
+      : '识别用户的 timeBudget（分钟），判断建议是否在预算内（合理误差±10分钟）。返回 JSON。',
   },
 })
   .preprocess(({ run }) => {

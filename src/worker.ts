@@ -6,16 +6,17 @@
 // - GET /api/models - 获取可用模型列表
 
 import { recipeTool } from './mastra/tools/recipe-tool';
-import { translateRecipes } from './utils/translator';
 import { MESSAGES, AVAILABLE_MODELS } from './constants/messages';
 import type { Recipe } from './types';
 import { chatAgent } from './mastra/agents/chat-agent';
+import LANGUAGE from './utils/language';
 
 type RecipeInput = {
   ingredients?: string;
   category?: string;
   cuisine?: string;
   limit?: number;
+  language?: 'zh-CN' | 'en-US';
 };
 
 type FrontendInput = {
@@ -27,6 +28,7 @@ type FrontendInput = {
   servings?: number; // 份数
   equipment?: string[]; // 设备，如 ["炒锅"]
   limit?: number;
+  language?: 'zh-CN' | 'en-US';
 };
 
 type ChatInput = {
@@ -40,75 +42,25 @@ export interface Env {
   OPENAI_API_KEY?: string;
 }
 
-function normalizeChinese(input: FrontendInput): { normalized: RecipeInput; meta: Record<string, any> } {
-  // 1) 处理食材：中文拆分并映射到英文，拼成逗号分隔
-  let normalizedIngredients: string | undefined;
-  if (input.ingredients && input.ingredients.trim()) {
-    const tokens = input.ingredients
-      .split(/[，,、\s]+/)
-      .map((t) => t.trim())
-      .filter(Boolean);
-    const mapped = tokens; // 已移除：ingredientMap（原中文到英文的固定映射），现统一使用自由输入透传
-    normalizedIngredients = mapped.join(',');
-  }
 
-  // 2) 处理类别：直接透传
-  let normalizedCategory: string | undefined;
-  if (input.category && input.category.trim()) {
-    const c = input.category.trim();
-    normalizedCategory = c; // 取消限定：不再使用 categoryMap，直接透传
-  }
-
-  // 3) 处理菜系/地区：直接透传
-  let normalizedCuisine: string | undefined;
-  if (input.cuisine && input.cuisine.trim()) {
-    const a = input.cuisine.trim();
-    normalizedCuisine = a; // 取消限定：不再使用 cuisineMap，直接透传
-  }
-
-  // 4) limit 透传
-  const limit = typeof input.limit === 'number' ? input.limit : undefined;
-
-  const normalized: RecipeInput = {
-    ingredients: normalizedIngredients,
-    category: normalizedCategory,
-    cuisine: normalizedCuisine,
-    limit,
-  };
-
-  const meta = {
-    original: input,
-    normalized,
-    taste: input.taste,
-    timeBudget: input.timeBudget,
-    servings: input.servings,
-    equipment: input.equipment,
-  };
-
-  return { normalized, meta };
-}
-
-async function getRecipes(input: RecipeInput) {
+async function getRecipes(input: RecipeInput, language: 'zh-CN' | 'en-US' = 'zh-CN') {
   const limitNum = typeof input.limit === 'number' ? input.limit : 5;
   const { ingredients, category, cuisine } = input;
 
+  // 传递 language 参数到 recipeTool
   const result = await recipeTool.execute({
-    context: { ingredients, category, cuisine, limit: limitNum },
+    context: { ingredients, category, cuisine, limit: limitNum, language },
     runtimeContext: {},
   } as any);
 
-  // 翻译食谱到中文
+  // 不再使用翻译，直接由 AI Agent 根据 LANGUAGE.val 用对应语言回答
   let recipes = result.recipes || [];
-  if (recipes.length > 0) {
-    console.log(MESSAGES.LOG.TRANSLATING_RECIPES(recipes.length));
-    // recipes = await translateRecipes(recipes);
-  }
 
   // 兜底：若为空则进行随机推荐，以保证每次都有答案
   if (recipes.length === 0) {
     try {
       const fallback = await recipeTool.execute({
-        context: { limit: limitNum },
+        context: { limit: limitNum, language },
         runtimeContext: {},
       } as any);
       recipes = fallback.recipes || [];
@@ -234,6 +186,7 @@ export default {
             category: body.category,
             cuisine: body.cuisine,
             taste: body.taste,
+            language: body.language as 'zh-CN' | 'en-US' | undefined,
             timeBudget: typeof body.timeBudget === 'number' ? body.timeBudget : undefined,
             servings: typeof body.servings === 'number' ? body.servings : undefined,
             equipment: Array.isArray(body.equipment) ? body.equipment : undefined,
@@ -246,12 +199,31 @@ export default {
           );
         }
 
-        // 中文输入标准化到 TheMealDB 可识别的英文关键词
-        const { normalized, meta } = normalizeChinese(frontInput);
+        // 设置全局语言变量，默认中文
+        const language = frontInput.language || 'zh-CN';
+        LANGUAGE.val = language;
 
-        const data = await getRecipes(normalized);
+        // 直接使用前端输入，不再进行中英文转换
+        const recipeInput: RecipeInput = {
+          ingredients: frontInput.ingredients,
+          category: frontInput.category,
+          cuisine: frontInput.cuisine,
+          limit: frontInput.limit,
+          language,
+        };
+
+        const data = await getRecipes(recipeInput, language);
         return new Response(
-          JSON.stringify({ ...data, request: meta }),
+          JSON.stringify({
+            ...data,
+            request: {
+              original: frontInput,
+              taste: frontInput.taste,
+              timeBudget: frontInput.timeBudget,
+              servings: frontInput.servings,
+              equipment: frontInput.equipment,
+            }
+          }),
           {
             status: 200,
             headers: { 'content-type': 'application/json; charset=utf-8', ...corsHeaders },
@@ -274,8 +246,11 @@ export default {
           message: body.message || '',
           threadId: body.threadId,
           model: body.model,
-          language: language === 'zh-CN' || language === 'en-US' ? language : undefined,
+          language: language === 'zh-CN' || language === 'en-US' ? language : 'zh-CN', // 默认中文
         };
+
+        // 设置全局语言变量
+        LANGUAGE.val = chatInput.language || 'zh-CN';
 
         if (!chatInput.message) {
           const isChinese = !chatInput.language || chatInput.language === 'zh-CN';

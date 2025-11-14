@@ -5,7 +5,6 @@
 // - 返回 JSON，包含 suggestions（简短提示文本）、recipes（候选菜谱数组）及 source（可选的来源信息）
 // - 支持中文输入自动翻译和 CORS
 import { recipeTool } from '../../src/mastra/tools/recipe-tool';
-import { translateRecipes } from '../../src/utils/translator';
 import { MESSAGES } from '../../src/constants/messages';
 import type { Recipe } from '../../src/types';
 
@@ -88,12 +87,7 @@ async function getRecipes(input: RecipeInput) {
     runtimeContext: {},
   } as any);
 
-  // 翻译食谱到中文
   let recipes = result.recipes || [];
-  if (recipes.length > 0) {
-    // console.log(MESSAGES.LOG.TRANSLATING_RECIPES(recipes.length));
-    // recipes = await translateRecipes(recipes);
-  }
 
   const unknownDish = language === 'zh-CN' ? '未知菜品' : 'Unknown Dish';
   const names = recipes.map((r: Recipe) => (
