@@ -8,7 +8,6 @@
 import { recipeTool } from './mastra/tools/recipe-tool';
 import { MESSAGES, AVAILABLE_MODELS } from './constants/messages';
 import type { Recipe } from './types';
-import { chatAgent } from './mastra/agents/chat-agent';
 import LANGUAGE from './utils/language';
 
 type RecipeInput = {
@@ -126,18 +125,30 @@ async function handleChat(input: ChatInput, env?: Env) {
   // 动态导入 chatAgent，避免在非聊天请求时初始化内存存储导致冷启动变慢
   const { chatAgent } = await import('./mastra/agents/chat-agent');
 
-  const response = await chatAgent.generate(messageWithLanguage, {
-    threadId,
-    resourceId: modelId,
-  });
+  try {
+    const response = await chatAgent.generate(messageWithLanguage, {
+      threadId,
+      resourceId: modelId,
+    });
 
-  return {
-    success: true,
-    response: response.text || '',
-    threadId,
-    model: modelToUse,
-    language: input.language,
-  };
+    return {
+      success: true,
+      response: response.text || '',
+      threadId,
+      model: modelToUse,
+      language: input.language,
+    };
+  } catch (e: any) {
+    console.error('handleChat error:', e);
+    return {
+      success: false,
+      response: '',
+      threadId,
+      model: modelToUse,
+      language: input.language,
+      error: e?.message || 'Internal error',
+    } as any;
+  }
 }
 
 function parseQuery(search: URLSearchParams): FrontendInput {
@@ -180,10 +191,17 @@ export default {
     // 设置全局语言变量，默认中文
     let language = 'zh-CN' as 'zh-CN' | 'en-US';
     if (request.method === 'GET') {
-      parseQuery(url.searchParams).language;
+      const lang = parseQuery(url.searchParams).language;
+      if (lang === 'zh-CN' || lang === 'en-US') {
+        language = lang;
+      }
     } else if (request.method === 'POST') {
-      const body = await request.json().catch(() => ({}));
-      language = body.language;;
+      // 注意：同一请求体只能读取一次，这里使用 clone() 以免影响后续路由再次读取
+      const body = await request.clone().json().catch(() => ({}));
+      const lang = body.language;
+      if (lang === 'zh-CN' || lang === 'en-US') {
+        language = lang;
+      }
     }
     LANGUAGE.val = language;
 
