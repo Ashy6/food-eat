@@ -11,6 +11,7 @@
 */
 import { createTool } from '@mastra/core/tools'; // 从 Mastra 核心库导入创建工具的函数
 import { z } from 'zod'; // 导入 Zod 库用于运行时类型验证和 schema 定义
+import { Translator, type NormalizedRecipe } from '../../utils/translator'; // 导入翻译器类和类型定义
 
 // 简要菜谱摘要结构（用于筛选列表返回）
 interface MealSummary { // 定义菜谱摘要的 TypeScript 接口
@@ -111,6 +112,21 @@ async function searchByName(query: string): Promise<MealDetail[]> { // 异步函
   return meals; // 返回搜索结果数组
 }
 
+// 辅助函数：将 MealDetail 转换为 NormalizedRecipe 格式
+function normalizeMeal(meal: MealDetail): NormalizedRecipe {
+  return {
+    id: meal.idMeal,
+    name: meal.strMeal,
+    category: meal.strCategory || null,
+    area: meal.strArea || null,
+    tags: meal.strTags ? meal.strTags.split(',').map((t) => t.trim()).filter(Boolean) : null,
+    instructions: meal.strInstructions || null,
+    thumbnail: meal.strMealThumb || null,
+    youtube: meal.strYoutube || null,
+    ingredients: extractIngredients(meal),
+  };
+}
+
 // Mastra 工具定义：根据输入筛选菜谱并返回结构化结果
 export const recipeTool = createTool({ // 使用 createTool 创建 Mastra 工具对象
   id: 'get-recipes', // 工具的唯一标识符
@@ -155,161 +171,90 @@ export const recipeTool = createTool({ // 使用 createTool 创建 Mastra 工具
       language?: 'zh-CN' | 'en-US'; // 语言参数：可选枚举
     };
 
+    // 初始化翻译器（从全局环境变量获取 API Key）
+    const translator = new Translator();
+
+    // 翻译输入参数：如果用户输入包含中文，则翻译为英文以调用 TheMealDB API
+    const translatedInput = await translator.translateRecipeInput({
+      ingredients,
+      category,
+      cuisine,
+    });
+
     let summaries: MealSummary[] = []; // 初始化摘要数组，用于存储筛选得到的菜谱摘要
 
     try { // 使用 try-catch 包裹整体逻辑，失败时降级到随机推荐
-      if (ingredients && ingredients.trim()) { // 如果提供了食材参数且不为空字符串
+      if (translatedInput.ingredients && translatedInput.ingredients.trim()) { // 使用翻译后的食材参数
         // 取第一个食材作为筛选条件（API只支持单食材）
-        const first = ingredients.split(',')[0].trim(); // 按逗号分割食材字符串，取第一个并去除空白
+        const first = translatedInput.ingredients.split(',')[0].trim(); // 按逗号分割食材字符串，取第一个并去除空白
         summaries = await filterByIngredient(first); // 调用按食材筛选函数获取摘要列表
 
         // 若筛选结果为空，先尝试按名称搜索，再回退到随机推荐
         if (!summaries.length) { // 如果按食材筛选没有结果
           const byName = await searchByName(first); // 尝试按名称搜索该食材
           if (byName.length) { // 如果按名称搜索找到了结果
-            const recipes = byName.slice(0, limit ?? 5).map((meal) => ({ // 截取前 limit 个结果（默认5个），并转换为标准格式
-              id: meal.idMeal, // 提取菜谱 ID
-              name: meal.strMeal, // 提取菜品名称
-              category: meal.strCategory || null, // 提取类别，若不存在则为 null
-              area: meal.strArea || null, // 提取地区，若不存在则为 null
-              tags: meal.strTags ? meal.strTags.split(',').map((t) => t.trim()).filter(Boolean) : null, // 将标签字符串分割为数组，去除空白和空值
-              instructions: meal.strInstructions || null, // 提取做法步骤，若不存在则为 null
-              thumbnail: meal.strMealThumb || null, // 提取缩略图 URL，若不存在则为 null
-              youtube: meal.strYoutube || null, // 提取 YouTube 链接，若不存在则为 null
-              ingredients: extractIngredients(meal), // 调用 extractIngredients 提取食材和用量数组
-            }));
-            return { recipes, source: 'TheMealDB' as const }; // 返回结果对象，source 固定为 'TheMealDB'
+            const rawRecipes = byName.slice(0, limit ?? 5).map(normalizeMeal); // 使用辅助函数规范化数据
+            const recipes = await translator.translateRecipeOutput(rawRecipes, language || 'zh-CN'); // 翻译输出
+            return { recipes, source: 'TheMealDB' as const }; // 返回结果对象
           }
 
           const randoms = await randomSelection(); // 如果按名称搜索也没有结果，调用随机选择函数
-          const recipes = randoms.slice(0, limit ?? 5).map((meal) => ({ // 截取前 limit 个随机结果，并转换为标准格式
-            id: meal.idMeal, // 提取菜谱 ID
-            name: meal.strMeal, // 提取菜品名称
-            category: meal.strCategory || null, // 提取类别，若不存在则为 null
-            area: meal.strArea || null, // 提取地区，若不存在则为 null
-            tags: meal.strTags ? meal.strTags.split(',').map((t) => t.trim()).filter(Boolean) : null, // 将标签字符串分割为数组
-            instructions: meal.strInstructions || null, // 提取做法步骤
-            thumbnail: meal.strMealThumb || null, // 提取缩略图 URL
-            youtube: meal.strYoutube || null, // 提取 YouTube 链接
-            ingredients: extractIngredients(meal), // 提取食材和用量数组
-          }));
+          const rawRecipes = randoms.slice(0, limit ?? 5).map(normalizeMeal); // 使用辅助函数规范化数据
+          const recipes = await translator.translateRecipeOutput(rawRecipes, language || 'zh-CN'); // 翻译输出
           return { recipes, source: 'TheMealDB' as const }; // 返回随机推荐结果
         }
-      } else if (category && category.trim()) { // 如果没有食材参数，但提供了类别参数且不为空
-        const cat = category.trim(); // 去除类别字符串的空白字符
+      } else if (translatedInput.category && translatedInput.category.trim()) { // 使用翻译后的类别参数
+        const cat = translatedInput.category.trim(); // 去除类别字符串的空白字符
         summaries = await filterByCategory(cat); // 调用按类别筛选函数获取摘要列表
         if (!summaries.length) { // 如果按类别筛选没有结果
           const byName = await searchByName(cat); // 尝试按名称搜索该类别
           if (byName.length) { // 如果按名称搜索找到了结果
-            const recipes = byName.slice(0, limit ?? 5).map((meal) => ({ // 截取前 limit 个结果，并转换为标准格式
-              id: meal.idMeal, // 提取菜谱 ID
-              name: meal.strMeal, // 提取菜品名称
-              category: meal.strCategory || null, // 提取类别
-              area: meal.strArea || null, // 提取地区
-              tags: meal.strTags ? meal.strTags.split(',').map((t) => t.trim()).filter(Boolean) : null, // 分割标签字符串
-              instructions: meal.strInstructions || null, // 提取做法步骤
-              thumbnail: meal.strMealThumb || null, // 提取缩略图 URL
-              youtube: meal.strYoutube || null, // 提取 YouTube 链接
-              ingredients: extractIngredients(meal), // 提取食材和用量数组
-            }));
+            const rawRecipes = byName.slice(0, limit ?? 5).map(normalizeMeal); // 使用辅助函数规范化数据
+            const recipes = await translator.translateRecipeOutput(rawRecipes, language || 'zh-CN'); // 翻译输出
             return { recipes, source: 'TheMealDB' as const }; // 返回搜索结果
           }
 
           const randoms = await randomSelection(); // 如果按名称搜索也没有结果，调用随机选择函数
-          const recipes = randoms.slice(0, limit ?? 5).map((meal) => ({ // 截取前 limit 个随机结果
-            id: meal.idMeal, // 提取菜谱 ID
-            name: meal.strMeal, // 提取菜品名称
-            category: meal.strCategory || null, // 提取类别
-            area: meal.strArea || null, // 提取地区
-            tags: meal.strTags ? meal.strTags.split(',').map((t) => t.trim()).filter(Boolean) : null, // 分割标签字符串
-            instructions: meal.strInstructions || null, // 提取做法步骤
-            thumbnail: meal.strMealThumb || null, // 提取缩略图 URL
-            youtube: meal.strYoutube || null, // 提取 YouTube 链接
-            ingredients: extractIngredients(meal), // 提取食材和用量数组
-          }));
+          const rawRecipes = randoms.slice(0, limit ?? 5).map(normalizeMeal); // 使用辅助函数规范化数据
+          const recipes = await translator.translateRecipeOutput(rawRecipes, language || 'zh-CN'); // 翻译输出
           return { recipes, source: 'TheMealDB' as const }; // 返回随机推荐结果
         }
-      } else if (cuisine && cuisine.trim()) { // 如果没有食材和类别参数，但提供了菜系参数且不为空
-        const area = cuisine.trim(); // 去除菜系字符串的空白字符
+      } else if (translatedInput.cuisine && translatedInput.cuisine.trim()) { // 使用翻译后的菜系参数
+        const area = translatedInput.cuisine.trim(); // 去除菜系字符串的空白字符
         summaries = await filterByArea(area); // 调用按地区/菜系筛选函数获取摘要列表
         if (!summaries.length) { // 如果按菜系筛选没有结果
           const byName = await searchByName(area); // 尝试按名称搜索该菜系
           if (byName.length) { // 如果按名称搜索找到了结果
-            const recipes = byName.slice(0, limit ?? 5).map((meal) => ({ // 截取前 limit 个结果，并转换为标准格式
-              id: meal.idMeal, // 提取菜谱 ID
-              name: meal.strMeal, // 提取菜品名称
-              category: meal.strCategory || null, // 提取类别
-              area: meal.strArea || null, // 提取地区
-              tags: meal.strTags ? meal.strTags.split(',').map((t) => t.trim()).filter(Boolean) : null, // 分割标签字符串
-              instructions: meal.strInstructions || null, // 提取做法步骤
-              thumbnail: meal.strMealThumb || null, // 提取缩略图 URL
-              youtube: meal.strYoutube || null, // 提取 YouTube 链接
-              ingredients: extractIngredients(meal), // 提取食材和用量数组
-            }));
+            const rawRecipes = byName.slice(0, limit ?? 5).map(normalizeMeal); // 使用辅助函数规范化数据
+            const recipes = await translator.translateRecipeOutput(rawRecipes, language || 'zh-CN'); // 翻译输出
             return { recipes, source: 'TheMealDB' as const }; // 返回搜索结果
           }
 
           const randoms = await randomSelection(); // 如果按名称搜索也没有结果，调用随机选择函数
-          const recipes = randoms.slice(0, limit ?? 5).map((meal) => ({ // 截取前 limit 个随机结果
-            id: meal.idMeal, // 提取菜谱 ID
-            name: meal.strMeal, // 提取菜品名称
-            category: meal.strCategory || null, // 提取类别
-            area: meal.strArea || null, // 提取地区
-            tags: meal.strTags ? meal.strTags.split(',').map((t) => t.trim()).filter(Boolean) : null, // 分割标签字符串
-            instructions: meal.strInstructions || null, // 提取做法步骤
-            thumbnail: meal.strMealThumb || null, // 提取缩略图 URL
-            youtube: meal.strYoutube || null, // 提取 YouTube 链接
-            ingredients: extractIngredients(meal), // 提取食材和用量数组
-          }));
+          const rawRecipes = randoms.slice(0, limit ?? 5).map(normalizeMeal); // 使用辅助函数规范化数据
+          const recipes = await translator.translateRecipeOutput(rawRecipes, language || 'zh-CN'); // 翻译输出
           return { recipes, source: 'TheMealDB' as const }; // 返回随机推荐结果
         }
       } else { // 如果没有提供任何筛选条件（食材、类别、菜系都为空）
         // 无筛选条件时，直接使用随机选择结果（已是详情数据）
         const randoms = await randomSelection(); // 调用随机选择函数获取多个随机菜谱
-        const recipes = randoms.slice(0, limit ?? 5).map((meal) => ({ // 截取前 limit 个结果，并转换为标准格式
-          id: meal.idMeal, // 提取菜谱 ID
-          name: meal.strMeal, // 提取菜品名称
-          category: meal.strCategory || null, // 提取类别
-          area: meal.strArea || null, // 提取地区
-          tags: meal.strTags ? meal.strTags.split(',').map((t) => t.trim()).filter(Boolean) : null, // 分割标签字符串
-          instructions: meal.strInstructions || null, // 提取做法步骤
-          thumbnail: meal.strMealThumb || null, // 提取缩略图 URL
-          youtube: meal.strYoutube || null, // 提取 YouTube 链接
-          ingredients: extractIngredients(meal), // 提取食材和用量数组
-        }));
+        const rawRecipes = randoms.slice(0, limit ?? 5).map(normalizeMeal); // 使用辅助函数规范化数据
+        const recipes = await translator.translateRecipeOutput(rawRecipes, language || 'zh-CN'); // 翻译输出
         return { recipes, source: 'TheMealDB' as const }; // 返回随机推荐结果
       }
 
       // 将摘要列表截取到期望数量后，再查详情并结构化返回
       const ids = summaries.slice(0, limit ?? 5).map((m) => m.idMeal); // 从摘要数组中提取前 limit 个菜谱的 ID
       const details = await fetchDetailsFor(ids); // 根据 ID 列表批量查询菜谱详情
-      const recipes = details.map((meal) => ({ // 将每个详情对象转换为标准格式
-        id: meal.idMeal, // 提取菜谱 ID
-        name: meal.strMeal, // 提取菜品名称
-        category: meal.strCategory || null, // 提取类别
-        area: meal.strArea || null, // 提取地区
-        tags: meal.strTags ? meal.strTags.split(',').map((t) => t.trim()).filter(Boolean) : null, // 分割标签字符串
-        instructions: meal.strInstructions || null, // 提取做法步骤
-        thumbnail: meal.strMealThumb || null, // 提取缩略图 URL
-        youtube: meal.strYoutube || null, // 提取 YouTube 链接
-        ingredients: extractIngredients(meal), // 提取食材和用量数组
-      }));
+      const rawRecipes = details.map(normalizeMeal); // 使用辅助函数规范化所有菜谱数据
+      const recipes = await translator.translateRecipeOutput(rawRecipes, language || 'zh-CN'); // 翻译输出
 
       return { recipes, source: 'TheMealDB' as const }; // 返回筛选结果对象
     } catch (err) { // 捕获整个 try 块中的任何异常
       // 失败时优雅降级：返回随机推荐，避免影响 Agent 流程
       const randoms = await randomSelection(); // 调用随机选择函数作为兜底方案
-      const recipes = randoms.slice(0, limit ?? 5).map((meal) => ({ // 截取前 limit 个随机结果
-        id: meal.idMeal, // 提取菜谱 ID
-        name: meal.strMeal, // 提取菜品名称
-        category: meal.strCategory || null, // 提取类别
-        area: meal.strArea || null, // 提取地区
-        tags: meal.strTags ? meal.strTags.split(',').map((t) => t.trim()).filter(Boolean) : null, // 分割标签字符串
-        instructions: meal.strInstructions || null, // 提取做法步骤
-        thumbnail: meal.strMealThumb || null, // 提取缩略图 URL
-        youtube: meal.strYoutube || null, // 提取 YouTube 链接
-        ingredients: extractIngredients(meal), // 提取食材和用量数组
-      }));
+      const rawRecipes = randoms.slice(0, limit ?? 5).map(normalizeMeal); // 使用辅助函数规范化数据
+      const recipes = await translator.translateRecipeOutput(rawRecipes, language || 'zh-CN'); // 翻译输出
       return { recipes, source: 'TheMealDB' as const }; // 返回降级的随机推荐结果
     }
   }, // execute 方法结束
