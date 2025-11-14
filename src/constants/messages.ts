@@ -2,13 +2,12 @@
  * 双语消息常量
  * 集中管理所有 API 响应和错误消息（中文/英文）
  */
-
-type Language = 'zh-CN' | 'en-US' | undefined;
+import LANGUAGE from '../utils/language';
+const isChinese = LANGUAGE.val === 'zh-CN';
 
 export const MESSAGES = {
   // API 响应消息
-  RECIPES_FOUND: (count: number, names: string[], language?: Language) => {
-    const isChinese = !language || language === 'zh-CN';
+  RECIPES_FOUND: (count: number, names: string[]) => {
     if (isChinese) {
       const displayNames = names.slice(0, 5).join('、');
       return `找到 ${count} 道候选菜：${displayNames}${count > 5 ? '等' : ''}`;
@@ -18,23 +17,21 @@ export const MESSAGES = {
     }
   },
 
-  RANDOM_RECIPES: (count: number, language?: Language) => {
-    const isChinese = !language || language === 'zh-CN';
+  RANDOM_RECIPES: (count: number) => {
     return isChinese
       ? `已为您随机推荐 ${count} 道菜品`
       : `Randomly recommended ${count} recipe${count > 1 ? 's' : ''} for you`;
   },
 
-  NO_RECIPES_FOUND: (language?: Language) => {
-    const isChinese = !language || language === 'zh-CN';
+  NO_RECIPES_FOUND: () => {
     return isChinese
       ? '抱歉，没有找到符合条件的食谱'
       : 'Sorry, no recipes found matching your criteria';
   },
 
   VALIDATION_ERROR: {
-    LIMIT_ONLY: (language?: Language) => {
-      const isChinese = !language || language === 'zh-CN';
+    LIMIT_ONLY: () => {
+
       return isChinese
         ? '请至少填写一个食材 / 分类 / 菜系'
         : 'Please provide at least one ingredient, category, or cuisine';
@@ -63,12 +60,12 @@ export const MESSAGES = {
 
   // 错误消息
   ERROR: {
-    INTERNAL: (language?: Language) => {
-      const isChinese = !language || language === 'zh-CN';
+    INTERNAL: () => {
+
       return isChinese ? '服务器内部错误，请稍后重试' : 'Internal server error, please try again later';
     },
-    INVALID_REQUEST: (language?: Language) => {
-      const isChinese = !language || language === 'zh-CN';
+    INVALID_REQUEST: () => {
+
       return isChinese ? '请求参数格式错误' : 'Invalid request parameters';
     },
     NO_API_KEY: '未配置 OpenAI API 密钥',
@@ -77,8 +74,8 @@ export const MESSAGES = {
     UNKNOWN: '未知错误',
     WORKFLOW_FAILED: '工作流执行失败',
     TOOL_EXECUTION_FAILED: '工具执行失败',
-    METHOD_NOT_ALLOWED: (language?: Language) => {
-      const isChinese = !language || language === 'zh-CN';
+    METHOD_NOT_ALLOWED: () => {
+
       return isChinese ? '不支持的请求方法' : 'Method not allowed';
     },
   },
@@ -86,7 +83,6 @@ export const MESSAGES = {
   // 成功消息
   SUCCESS: {
     RECIPES_GENERATED: '成功生成食谱推荐',
-    TRANSLATION_COMPLETE: '翻译完成',
     CHAT_RESPONSE: '对话成功',
   },
 

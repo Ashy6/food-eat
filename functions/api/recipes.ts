@@ -97,8 +97,8 @@ async function getRecipes(input: RecipeInput) {
   ));
 
   const head = recipes.length > 0
-    ? MESSAGES.RECIPES_FOUND(names.length, names, language)
-    : MESSAGES.NO_RECIPES_FOUND(language);
+    ? MESSAGES.RECIPES_FOUND(names.length, names)
+    : MESSAGES.NO_RECIPES_FOUND();
 
   // Determine video platform based on language
   const videoPlatform = language === 'zh-CN' ? 'bilibili' : 'youtube';
@@ -164,18 +164,17 @@ export const onRequest = async ({ request }: { request: Request }) => {
         language: language === 'zh-CN' || language === 'en-US' ? language : undefined,
       };
     } else {
-      const lang = undefined; // Could extract from headers if needed
       return new Response(
-        JSON.stringify({ error: MESSAGES.ERROR.METHOD_NOT_ALLOWED(lang) }),
+        JSON.stringify({ error: MESSAGES.ERROR.METHOD_NOT_ALLOWED() }),
         { status: 405, headers: { 'content-type': 'application/json; charset=utf-8', ...corsHeaders } }
       );
     }
 
     // Validate: require at least one search parameter besides limit
-    const { ingredients, category, cuisine, limit, language } = frontInput;
+    const { ingredients, category, cuisine, limit } = frontInput;
     if (!ingredients && !category && !cuisine && limit !== undefined) {
       return new Response(
-        JSON.stringify({ error: MESSAGES.VALIDATION_ERROR.LIMIT_ONLY(language) }),
+        JSON.stringify({ error: MESSAGES.VALIDATION_ERROR.LIMIT_ONLY() }),
         { status: 400, headers: { 'content-type': 'application/json; charset=utf-8', ...corsHeaders } }
       );
     }
@@ -193,9 +192,8 @@ export const onRequest = async ({ request }: { request: Request }) => {
     );
   } catch (err: any) {
     console.error('Recipes API error:', err);
-    const lang = undefined; // Could be extracted from request if needed
     return new Response(
-      JSON.stringify({ error: err?.message || MESSAGES.ERROR.INTERNAL(lang) }),
+      JSON.stringify({ error: err?.message || MESSAGES.ERROR.INTERNAL() }),
       {
         status: 500,
         headers: { 'content-type': 'application/json; charset=utf-8', ...corsHeaders },
