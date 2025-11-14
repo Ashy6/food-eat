@@ -145,6 +145,9 @@ function parseQuery(search: URLSearchParams): FrontendInput {
   const limit = limitStr ? Number(limitStr) : undefined;
   const equipmentStr = search.get('equipment');
   const equipment = equipmentStr ? equipmentStr.split(/[，,、\s]+/).map((s) => s.trim()).filter(Boolean) : undefined;
+  const languageStr = search.get('language');
+  const language = (languageStr === 'zh-CN' || languageStr === 'en-US') ? languageStr : undefined;
+
   return {
     ingredients: search.get('ingredients') ?? undefined,
     category: search.get('category') ?? undefined,
@@ -154,6 +157,7 @@ function parseQuery(search: URLSearchParams): FrontendInput {
     servings: search.get('servings') ? Number(search.get('servings')) : undefined,
     equipment,
     limit: Number.isFinite(limit as number) ? (limit as number) : undefined,
+    language,
   };
 }
 
@@ -171,8 +175,20 @@ export default {
       return new Response(null, { headers: corsHeaders });
     }
 
+    const url = new URL(request.url);
+
+    // 设置全局语言变量，默认中文
+    let language = 'zh-CN' as 'zh-CN' | 'en-US';
+    if (request.method === 'GET') {
+      parseQuery(url.searchParams).language;
+    } else if (request.method === 'POST') {
+      const body = await request.json().catch(() => ({}));
+      language = body.language;;
+    }
+    LANGUAGE.val = language;
+
     try {
-      const url = new URL(request.url);
+
 
       // 食谱搜索 API
       if (url.pathname === '/api/recipes') {
@@ -198,10 +214,6 @@ export default {
             { status: 405, headers: { 'content-type': 'application/json; charset=utf-8', ...corsHeaders } }
           );
         }
-
-        // 设置全局语言变量，默认中文
-        const language = frontInput.language || 'zh-CN';
-        LANGUAGE.val = language;
 
         // 直接使用前端输入，不再进行中英文转换
         const recipeInput: RecipeInput = {
@@ -248,9 +260,6 @@ export default {
           model: body.model,
           language: language === 'zh-CN' || language === 'en-US' ? language : 'zh-CN', // 默认中文
         };
-
-        // 设置全局语言变量
-        LANGUAGE.val = chatInput.language || 'zh-CN';
 
         if (!chatInput.message) {
           const isChinese = !chatInput.language || chatInput.language === 'zh-CN';

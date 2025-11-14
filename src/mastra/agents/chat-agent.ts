@@ -19,6 +19,8 @@ export const chatAgent = new Agent({
     Language Selection Rules：
     IMPORTANT: Strictly follow these language rules**
 
+    如果用户没有要求想让你进行推荐，则可以根据中国的节气进行推荐并说明更适合节气的食物有哪些
+
     核心功能 / Core Features：
     1. **推荐今天吃什么 / Food Recommendations**
        - 根据用户偏好、心情、时间等推荐菜品
