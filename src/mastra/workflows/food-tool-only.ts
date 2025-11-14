@@ -43,6 +43,8 @@ const fetchRecipes = createStep({
       runtimeContext: {},
     } as any);
     const names = (result.recipes || []).map((r) => r.name);
+    console.log(lang, 66);
+    
     const head = (lang === 'en')
       ? `Found ${names.length} candidate dishes: ${names.slice(0, 5).join(', ')}`
       : `找到 ${names.length} 道候选菜：${names.slice(0, 5).join('、')}`;

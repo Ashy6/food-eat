@@ -132,43 +132,67 @@ async function getRecipes(input: RecipeInput) {
 async function handleChat(input: ChatInput, env?: Env) {
   const threadId = input.threadId || `thread-${Date.now()}`;
 
-  // Set OpenAI API key from environment if available
-  if (env?.OPENAI_API_KEY) {
-    // @ts-ignore - Setting global env for Mastra agents
-    globalThis.process = globalThis.process || {};
-    globalThis.process.env = globalThis.process.env || {};
-    globalThis.process.env.OPENAI_API_KEY = env.OPENAI_API_KEY;
+  // Validate that we have an API key
+  if (!env?.OPENAI_API_KEY) {
+    console.error('Missing OPENAI_API_KEY in environment');
+    const isChinese = !input.language || input.language === 'zh-CN';
+    return {
+      success: false,
+      response: isChinese
+        ? 'OpenAI API密钥未配置，请联系管理员。'
+        : 'OpenAI API key is not configured. Please contact the administrator.',
+      threadId,
+      model: 'error',
+      language: input.language,
+    };
   }
+
+  // Set OpenAI API key from environment
+  // @ts-ignore - Setting global env for Mastra agents
+  globalThis.process = globalThis.process || {};
+  globalThis.process.env = globalThis.process.env || {};
+  globalThis.process.env.OPENAI_API_KEY = env.OPENAI_API_KEY;
 
   // Prepare language instruction based on input.language
   let languageInstruction = '';
   if (input.language === 'en-US') {
-    languageInstruction = '\n\n**Language preference: English (en-US). You MUST respond entirely in English.**';
+    languageInstruction = '\n\n**IMPORTANT: Language preference is English (en-US). You MUST respond ENTIRELY in English. Do not use any Chinese characters.**';
   } else if (input.language === 'zh-CN') {
-    languageInstruction = '\n\n**语言偏好：简体中文 (zh-CN)。你必须完全用中文回答。**';
+    languageInstruction = '\n\n**重要：语言偏好是简体中文 (zh-CN)。你必须完全用中文回答，不要使用英文。**';
   } else {
     // Default to Chinese if no language specified
-    languageInstruction = '\n\n**语言偏好：简体中文 (zh-CN)。你必须完全用中文回答。**';
+    languageInstruction = '\n\n**重要：语言偏好是简体中文 (zh-CN)。你必须完全用中文回答，不要使用英文。**';
   }
 
   // Combine user message with language instruction
   const messageWithLanguage = input.message + languageInstruction;
 
+  // Determine which model to use
+  const modelToUse = input.model || 'gpt-4o-mini';
+  const modelId = modelToUse.startsWith('openai/') ? modelToUse : `openai/${modelToUse}`;
+
   try {
-    // 调用 chat agent
+    console.log('Calling chat agent with model:', modelId, 'language:', input.language);
+
+    // 调用 chat agent with custom model
     const response = await chatAgent.generate(messageWithLanguage, {
       threadId,
+      // resource: modelId,
     });
+
+    console.log('Chat agent response received:', response.text?.substring(0, 100));
 
     return {
       success: true,
       response: response.text || '',
       threadId,
-      model: input.model || 'gpt-4o-mini',
+      model: modelToUse,
       language: input.language,
     };
   } catch (error: any) {
     console.error('Chat error:', error);
+    console.error('Error details:', error?.message, error?.stack);
+
     // 兜底：返回基于工具的随机菜谱建议，而不是报错
     try {
       const fallback = await recipeTool.execute({
@@ -318,7 +342,7 @@ export default {
           );
         }
 
-        const result = await handleChat(chatInput);
+        const result = await handleChat(chatInput, env);
         return new Response(
           JSON.stringify(result),
           {
