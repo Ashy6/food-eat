@@ -174,77 +174,118 @@ export const recipeTool = createTool({ // 使用 createTool 创建 Mastra 工具
     // 初始化翻译器（从全局环境变量获取 API Key）
     const translator = new Translator();
 
-    // 翻译输入参数：如果用户输入包含中文，则翻译为英文以调用 TheMealDB API
-    const translatedInput = await translator.translateRecipeInput({
+    // 使用增强版翻译：生成联想词并翻译所有关键词
+    const enhancedInput = await translator.translateRecipeInputEnhanced({
       ingredients,
       category,
       cuisine,
     });
 
-    let summaries: MealSummary[] = []; // 初始化摘要数组，用于存储筛选得到的菜谱摘要
+    // 用于去重的 Set（存储已查询过的菜谱 ID）
+    const foundIds = new Set<string>();
+    let allSummaries: MealSummary[] = []; // 存储所有查询结果的摘要
 
     try { // 使用 try-catch 包裹整体逻辑，失败时降级到随机推荐
-      if (translatedInput.ingredients && translatedInput.ingredients.trim()) { // 使用翻译后的食材参数
-        // 取第一个食材作为筛选条件（API只支持单食材）
-        const first = translatedInput.ingredients.split(',')[0].trim(); // 按逗号分割食材字符串，取第一个并去除空白
-        summaries = await filterByIngredient(first); // 调用按食材筛选函数获取摘要列表
+      if (enhancedInput.ingredients) { // 如果有食材输入
+        const { translated, relatedTerms } = enhancedInput.ingredients;
+        // 所有要查询的关键词：原始翻译 + 联想词
+        const allKeywords = [translated, ...relatedTerms].filter(Boolean);
 
-        // 若筛选结果为空，先尝试按名称搜索，再回退到随机推荐
-        if (!summaries.length) { // 如果按食材筛选没有结果
-          const byName = await searchByName(first); // 尝试按名称搜索该食材
-          if (byName.length) { // 如果按名称搜索找到了结果
-            const rawRecipes = byName.slice(0, limit ?? 5).map(normalizeMeal); // 使用辅助函数规范化数据
-            const recipes = await translator.translateRecipeOutput(rawRecipes, language || 'zh-CN'); // 翻译输出
-            return { recipes, source: 'TheMealDB' as const }; // 返回结果对象
+        // 对每个关键词进行查询，合并结果并去重
+        for (const keyword of allKeywords) {
+          const summaries = await filterByIngredient(keyword); // 按食材筛选
+          // 去重：只添加新发现的菜谱
+          for (const summary of summaries) {
+            if (!foundIds.has(summary.idMeal)) {
+              foundIds.add(summary.idMeal);
+              allSummaries.push(summary);
+            }
           }
-
-          const randoms = await randomSelection(); // 如果按名称搜索也没有结果，调用随机选择函数
-          const rawRecipes = randoms.slice(0, limit ?? 5).map(normalizeMeal); // 使用辅助函数规范化数据
-          const recipes = await translator.translateRecipeOutput(rawRecipes, language || 'zh-CN'); // 翻译输出
-          return { recipes, source: 'TheMealDB' as const }; // 返回随机推荐结果
+          // 如果已经找到足够的结果，提前退出
+          if (allSummaries.length >= (limit ?? 5)) break;
         }
-      } else if (translatedInput.category && translatedInput.category.trim()) { // 使用翻译后的类别参数
-        const cat = translatedInput.category.trim(); // 去除类别字符串的空白字符
-        summaries = await filterByCategory(cat); // 调用按类别筛选函数获取摘要列表
-        if (!summaries.length) { // 如果按类别筛选没有结果
-          const byName = await searchByName(cat); // 尝试按名称搜索该类别
-          if (byName.length) { // 如果按名称搜索找到了结果
-            const rawRecipes = byName.slice(0, limit ?? 5).map(normalizeMeal); // 使用辅助函数规范化数据
-            const recipes = await translator.translateRecipeOutput(rawRecipes, language || 'zh-CN'); // 翻译输出
-            return { recipes, source: 'TheMealDB' as const }; // 返回搜索结果
+
+        // 若所有关键词都没有筛选结果，尝试按名称搜索原始关键词
+        if (!allSummaries.length) {
+          const byName = await searchByName(translated);
+          if (byName.length) {
+            const rawRecipes = byName.slice(0, limit ?? 5).map(normalizeMeal);
+            const recipes = await translator.translateRecipeOutput(rawRecipes, language || 'zh-CN');
+            return { recipes, source: 'TheMealDB' as const };
           }
 
-          const randoms = await randomSelection(); // 如果按名称搜索也没有结果，调用随机选择函数
-          const rawRecipes = randoms.slice(0, limit ?? 5).map(normalizeMeal); // 使用辅助函数规范化数据
-          const recipes = await translator.translateRecipeOutput(rawRecipes, language || 'zh-CN'); // 翻译输出
-          return { recipes, source: 'TheMealDB' as const }; // 返回随机推荐结果
+          // 如果按名称搜索也没有结果，回退到随机推荐
+          const randoms = await randomSelection();
+          const rawRecipes = randoms.slice(0, limit ?? 5).map(normalizeMeal);
+          const recipes = await translator.translateRecipeOutput(rawRecipes, language || 'zh-CN');
+          return { recipes, source: 'TheMealDB' as const };
         }
-      } else if (translatedInput.cuisine && translatedInput.cuisine.trim()) { // 使用翻译后的菜系参数
-        const area = translatedInput.cuisine.trim(); // 去除菜系字符串的空白字符
-        summaries = await filterByArea(area); // 调用按地区/菜系筛选函数获取摘要列表
-        if (!summaries.length) { // 如果按菜系筛选没有结果
-          const byName = await searchByName(area); // 尝试按名称搜索该菜系
-          if (byName.length) { // 如果按名称搜索找到了结果
-            const rawRecipes = byName.slice(0, limit ?? 5).map(normalizeMeal); // 使用辅助函数规范化数据
-            const recipes = await translator.translateRecipeOutput(rawRecipes, language || 'zh-CN'); // 翻译输出
-            return { recipes, source: 'TheMealDB' as const }; // 返回搜索结果
+      } else if (enhancedInput.category) { // 如果有类别输入
+        const { translated, relatedTerms } = enhancedInput.category;
+        const allKeywords = [translated, ...relatedTerms].filter(Boolean);
+
+        for (const keyword of allKeywords) {
+          const summaries = await filterByCategory(keyword); // 按类别筛选
+          for (const summary of summaries) {
+            if (!foundIds.has(summary.idMeal)) {
+              foundIds.add(summary.idMeal);
+              allSummaries.push(summary);
+            }
+          }
+          if (allSummaries.length >= (limit ?? 5)) break;
+        }
+
+        if (!allSummaries.length) {
+          const byName = await searchByName(translated);
+          if (byName.length) {
+            const rawRecipes = byName.slice(0, limit ?? 5).map(normalizeMeal);
+            const recipes = await translator.translateRecipeOutput(rawRecipes, language || 'zh-CN');
+            return { recipes, source: 'TheMealDB' as const };
           }
 
-          const randoms = await randomSelection(); // 如果按名称搜索也没有结果，调用随机选择函数
-          const rawRecipes = randoms.slice(0, limit ?? 5).map(normalizeMeal); // 使用辅助函数规范化数据
-          const recipes = await translator.translateRecipeOutput(rawRecipes, language || 'zh-CN'); // 翻译输出
-          return { recipes, source: 'TheMealDB' as const }; // 返回随机推荐结果
+          const randoms = await randomSelection();
+          const rawRecipes = randoms.slice(0, limit ?? 5).map(normalizeMeal);
+          const recipes = await translator.translateRecipeOutput(rawRecipes, language || 'zh-CN');
+          return { recipes, source: 'TheMealDB' as const };
+        }
+      } else if (enhancedInput.cuisine) { // 如果有菜系输入
+        const { translated, relatedTerms } = enhancedInput.cuisine;
+        const allKeywords = [translated, ...relatedTerms].filter(Boolean);
+
+        for (const keyword of allKeywords) {
+          const summaries = await filterByArea(keyword); // 按菜系筛选
+          for (const summary of summaries) {
+            if (!foundIds.has(summary.idMeal)) {
+              foundIds.add(summary.idMeal);
+              allSummaries.push(summary);
+            }
+          }
+          if (allSummaries.length >= (limit ?? 5)) break;
+        }
+
+        if (!allSummaries.length) {
+          const byName = await searchByName(translated);
+          if (byName.length) {
+            const rawRecipes = byName.slice(0, limit ?? 5).map(normalizeMeal);
+            const recipes = await translator.translateRecipeOutput(rawRecipes, language || 'zh-CN');
+            return { recipes, source: 'TheMealDB' as const };
+          }
+
+          const randoms = await randomSelection();
+          const rawRecipes = randoms.slice(0, limit ?? 5).map(normalizeMeal);
+          const recipes = await translator.translateRecipeOutput(rawRecipes, language || 'zh-CN');
+          return { recipes, source: 'TheMealDB' as const };
         }
       } else { // 如果没有提供任何筛选条件（食材、类别、菜系都为空）
         // 无筛选条件时，直接使用随机选择结果（已是详情数据）
-        const randoms = await randomSelection(); // 调用随机选择函数获取多个随机菜谱
-        const rawRecipes = randoms.slice(0, limit ?? 5).map(normalizeMeal); // 使用辅助函数规范化数据
-        const recipes = await translator.translateRecipeOutput(rawRecipes, language || 'zh-CN'); // 翻译输出
-        return { recipes, source: 'TheMealDB' as const }; // 返回随机推荐结果
+        const randoms = await randomSelection();
+        const rawRecipes = randoms.slice(0, limit ?? 5).map(normalizeMeal);
+        const recipes = await translator.translateRecipeOutput(rawRecipes, language || 'zh-CN');
+        return { recipes, source: 'TheMealDB' as const };
       }
 
       // 将摘要列表截取到期望数量后，再查详情并结构化返回
-      const ids = summaries.slice(0, limit ?? 5).map((m) => m.idMeal); // 从摘要数组中提取前 limit 个菜谱的 ID
+      const ids = allSummaries.slice(0, limit ?? 5).map((m: MealSummary) => m.idMeal); // 从摘要数组中提取前 limit 个菜谱的 ID
       const details = await fetchDetailsFor(ids); // 根据 ID 列表批量查询菜谱详情
       const rawRecipes = details.map(normalizeMeal); // 使用辅助函数规范化所有菜谱数据
       const recipes = await translator.translateRecipeOutput(rawRecipes, language || 'zh-CN'); // 翻译输出

@@ -3,6 +3,8 @@
 import { createStep, createWorkflow } from '@mastra/core/workflows';
 import { z } from 'zod';
 import { recipeTool } from '../tools/recipe-tool';
+import LANGUAGE from '../../utils/language';
+const isChinese = LANGUAGE.val === 'zh-CN';
 
 const inputSchema = z.object({
   ingredients: z.string().optional(),
@@ -43,9 +45,7 @@ const fetchRecipes = createStep({
       runtimeContext: {},
     } as any);
     const names = (result.recipes || []).map((r) => r.name);
-    console.log(lang, 66);
-    
-    const head = (lang === 'en')
+    const head = !isChinese
       ? `Found ${names.length} candidate dishes: ${names.slice(0, 5).join(', ')}`
       : `找到 ${names.length} 道候选菜：${names.slice(0, 5).join('、')}`;
     return { suggestions: head, recipes: result.recipes, source: result.source };

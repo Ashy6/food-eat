@@ -24,10 +24,29 @@ export interface NormalizedRecipe {
 }
 
 /**
+ * 联想词结构（用于智能关键词扩展）
+ */
+export interface AssociatedTerms {
+  original: string; // 原始输入
+  translated: string; // 翻译后的原始输入
+  relatedTerms: string[]; // 联想到的相关词汇（已翻译）
+}
+
+/**
+ * 增强版翻译输入（包含联想词）
+ */
+export interface EnhancedTranslationInput {
+  ingredients?: AssociatedTerms;
+  category?: AssociatedTerms;
+  cuisine?: AssociatedTerms;
+}
+
+/**
  * 翻译器类 - 封装 OpenAI API 调用逻辑
  */
 export class Translator {
   private cache = new Map<string, string>(); // 翻译缓存，格式：'language:原文' -> '译文'
+  private associationCache = new Map<string, string[]>(); // 联想词缓存，格式：'type:原文' -> ['联想词1', '联想词2', ...]
   private apiKey: string; // OpenAI API Key
 
   /**
@@ -50,6 +69,107 @@ export class Translator {
   isChinese(text: string): boolean {
     if (!text) return false;
     return /[\u4e00-\u9fa5]/.test(text); // Unicode 范围：U+4E00 到 U+9FA5
+  }
+
+  /**
+   * 生成相关联想词（使用 AI 智能扩展关键词）
+   * @param input - 原始输入（中文）
+   * @param type - 联想类型（食材/分类/菜系）
+   * @returns 联想到的相关词汇数组（中文）
+   */
+  private async generateRelatedTerms(
+    input: string,
+    type: 'ingredients' | 'category' | 'cuisine'
+  ): Promise<string[]> {
+    // 边界检查
+    if (!input || !input.trim()) return [];
+    if (!this.apiKey) {
+      console.warn('OpenAI API Key not found, skipping association');
+      return [];
+    }
+
+    // 检查缓存
+    const cacheKey = `${type}:${input}`;
+    if (this.associationCache.has(cacheKey)) {
+      return this.associationCache.get(cacheKey)!;
+    }
+
+    try {
+      // 根据类型设置不同的 System Prompt
+      let systemPrompt = '';
+      if (type === 'ingredients') {
+        systemPrompt = `你是一个专业的食材联想专家。用户会输入一个菜品名称或食材名称，你需要联想出制作这道菜可能用到的主要食材（2-3个）。
+规则：
+1. 只返回食材名称，用逗号分隔
+2. 优先返回核心食材（如面粉、鸡蛋、肉类等）
+3. 不要返回调味料
+4. 不要返回任何解释或额外文字
+5. 示例：输入"炒拉条" → 输出"面粉,水,面条"`;
+      } else if (type === 'category') {
+        systemPrompt = `你是一个专业的菜品分类专家。用户会输入一个菜品名称，你需要联想出这道菜所属的分类（2-3个）。
+规则：
+1. 只返回分类名称，用逗号分隔
+2. 使用通用分类（如面食、肉类、汤类、素食等）
+3. 不要返回任何解释或额外文字
+4. 示例：输入"炒拉条" → 输出"面食,面"`;
+      } else {
+        // cuisine
+        systemPrompt = `你是一个专业的菜系分类专家。用户会输入一个菜品名称，你需要联想出这道菜所属的菜系或风味（2-3个）。
+规则：
+1. 只返回菜系名称，用逗号分隔
+2. 使用标准菜系名称（如中国菜、意大利菜、日本料理等）或地方菜系（如川菜、粤菜、山西菜等）
+3. 不要返回任何解释或额外文字
+4. 示例：输入"炒拉条" → 输出"面食类,山西菜"`;
+      }
+
+      // 调用 OpenAI Chat Completions API
+      const response = await fetch(
+        'https://api.openai.com/v1/chat/completions',
+        {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+            Authorization: `Bearer ${this.apiKey}`,
+          },
+          body: JSON.stringify({
+            model: 'gpt-3.5-turbo', // 使用 gpt-3.5-turbo 以平衡成本和质量
+            messages: [
+              { role: 'system', content: systemPrompt },
+              { role: 'user', content: input },
+            ],
+            temperature: 0.5, // 适度的随机性，保证联想多样性
+            max_tokens: 100, // 联想词不需要太多 token
+          }),
+        }
+      );
+
+      // 解析响应
+      if (!response.ok) {
+        console.error(
+          `OpenAI API error: ${response.status} ${response.statusText}`
+        );
+        return [];
+      }
+
+      const data = await response.json();
+      const associationText =
+        data.choices?.[0]?.message?.content?.trim() || '';
+
+      // 解析联想词（逗号分隔）
+      const relatedTerms = associationText
+        .split(',')
+        .map((term: string) => term.trim())
+        .filter(Boolean)
+        .slice(0, 3); // 最多返回 3 个联想词
+
+      // 存入缓存
+      this.associationCache.set(cacheKey, relatedTerms);
+      return relatedTerms;
+    } catch (error) {
+      // 错误降级：返回空数组
+      console.error('Association generation error:', error);
+      return [];
+    }
   }
 
   /**
@@ -151,6 +271,118 @@ export class Translator {
     }
     if (input.cuisine && this.isChinese(input.cuisine)) {
       result.cuisine = await this.translate(input.cuisine, 'en-US');
+    }
+
+    return result;
+  }
+
+  /**
+   * 增强版翻译菜谱输入（支持 AI 联想词扩展）
+   * 用途：智能生成相关词汇，提高 TheMealDB API 查询匹配率
+   *
+   * @param input - 原始输入参数
+   * @param enableAssociation - 是否启用联想词功能（默认启用）
+   * @returns 增强版翻译输入（包含原始词和联想词）
+   */
+  async translateRecipeInputEnhanced(
+    input: {
+      ingredients?: string;
+      category?: string;
+      cuisine?: string;
+    },
+    enableAssociation: boolean = true
+  ): Promise<EnhancedTranslationInput> {
+    const result: EnhancedTranslationInput = {};
+
+    // 处理 ingredients 字段
+    if (input.ingredients) {
+      const original = input.ingredients;
+
+      // 如果是中文输入且启用联想词
+      if (this.isChinese(original) && enableAssociation) {
+        // 1. 生成联想词（中文）
+        const relatedTermsChinese = await this.generateRelatedTerms(
+          original,
+          'ingredients'
+        );
+
+        // 2. 翻译原始词 + 所有联想词
+        const [translated, ...translatedRelated] = await Promise.all([
+          this.translate(original, 'en-US'),
+          ...relatedTermsChinese.map((term) => this.translate(term, 'en-US')),
+        ]);
+
+        result.ingredients = {
+          original,
+          translated,
+          relatedTerms: translatedRelated,
+        };
+      } else {
+        // 英文输入或禁用联想词：只翻译原始词
+        result.ingredients = {
+          original,
+          translated: original, // 英文不需要翻译
+          relatedTerms: [],
+        };
+      }
+    }
+
+    // 处理 category 字段
+    if (input.category) {
+      const original = input.category;
+
+      if (this.isChinese(original) && enableAssociation) {
+        const relatedTermsChinese = await this.generateRelatedTerms(
+          original,
+          'category'
+        );
+
+        const [translated, ...translatedRelated] = await Promise.all([
+          this.translate(original, 'en-US'),
+          ...relatedTermsChinese.map((term) => this.translate(term, 'en-US')),
+        ]);
+
+        result.category = {
+          original,
+          translated,
+          relatedTerms: translatedRelated,
+        };
+      } else {
+        result.category = {
+          original,
+          translated: original,
+          relatedTerms: [],
+        };
+      }
+    }
+
+    // 处理 cuisine 字段
+    if (input.cuisine) {
+      const original = input.cuisine;
+
+      if (this.isChinese(original) && enableAssociation) {
+        const relatedTermsChinese = await this.generateRelatedTerms(
+          original,
+          'cuisine'
+        );
+
+        const [translated, ...translatedRelated] = await Promise.all([
+          this.translate(original, 'en-US'),
+          ...relatedTermsChinese.map((term) => this.translate(term, 'en-US')),
+        ]);
+
+        result.cuisine = {
+          original,
+          translated,
+          relatedTerms: translatedRelated,
+        };
+      } else {
+        result.cuisine = {
+          original,
+          translated: original,
+          relatedTerms: [],
+        };
+      }
     }
 
     return result;
