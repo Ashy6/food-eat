@@ -35,16 +35,21 @@ async function handleChat(input: ChatInput) {
     // Combine user message with language instruction
     const messageWithLanguage = input.message + languageInstruction;
 
+    // 根据输入或默认值确定模型，并转换为 Mastra 所需的资源 ID（带 provider 前缀）
+    const modelToUse = input.model || 'gpt-4o-mini';
+    const modelId = modelToUse.startsWith('openai/') ? modelToUse : `openai/${modelToUse}`;
+
     // 调用 chat agent
     const response = await chatAgent.generate(messageWithLanguage, {
       threadId,
+      resourceId: modelId,
     });
 
     return {
       success: true,
       response: response.text || '',
       threadId,
-      model: input.model || 'gpt-4o-mini',
+      model: modelToUse,
       language: input.language,
     };
   } catch (error: any) {

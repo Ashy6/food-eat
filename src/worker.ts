@@ -167,81 +167,25 @@ async function handleChat(input: ChatInput, env?: Env) {
   // Combine user message with language instruction
   const messageWithLanguage = input.message + languageInstruction;
 
-  // Determine which model to use
+  // 根据输入或默认值确定模型，并转换为 Mastra 所需的资源 ID（带 provider 前缀）
   const modelToUse = input.model || 'gpt-4o-mini';
-  const modelId = modelToUse.startsWith('openai/') ? modelToUse : `openai/${modelToUse}`;
+  const modelId = modelToUse.includes('/') ? modelToUse : `openai/${modelToUse}`;
 
-  try {
-    console.log('Calling chat agent with model:', modelId, 'language:', input.language);
+  // 动态导入 chatAgent，避免在非聊天请求时初始化内存存储导致冷启动变慢
+  const { chatAgent } = await import('./mastra/agents/chat-agent');
 
-    // 调用 chat agent with custom model
-    const response = await chatAgent.generate(messageWithLanguage, {
-      threadId,
-      // resource: modelId,
-    });
+  const response = await chatAgent.generate(messageWithLanguage, {
+    threadId,
+    resourceId: modelId,
+  });
 
-    console.log('Chat agent response received:', response.text?.substring(0, 100));
-
-    return {
-      success: true,
-      response: response.text || '',
-      threadId,
-      model: modelToUse,
-      language: input.language,
-    };
-  } catch (error: any) {
-    console.error('Chat error:', error);
-    console.error('Error details:', error?.message, error?.stack);
-
-    // 兜底：返回基于工具的随机菜谱建议，而不是报错
-    try {
-      const fallback = await recipeTool.execute({
-        context: { limit: 5 },
-        runtimeContext: {},
-      } as any);
-
-      const unknownDish = (!input.language || input.language === 'zh-CN') ? '未知菜品' : 'Unknown Dish';
-      const names = (fallback.recipes || []).map((r: any) => (
-        'strMeal' in r ? (r.strMeal || unknownDish) : ('name' in r ? (r.name || unknownDish) : unknownDish)
-      ));
-
-      // Generate bilingual fallback message
-      const isChinese = !input.language || input.language === 'zh-CN';
-      let text: string;
-
-      if (names.length > 0) {
-        const separator = isChinese ? '、' : ', ';
-        const prefix = isChinese
-          ? '当前模型不可用，我为您随机推荐这些菜品：'
-          : 'The model is currently unavailable. Here are some random dish recommendations: ';
-        const suffix = isChinese ? '。' : '.';
-        text = prefix + names.slice(0, 5).join(separator) + suffix;
-      } else {
-        text = isChinese
-          ? '当前模型不可用，建议您稍后重试或指定食材/菜系以获取更多建议。'
-          : 'The model is currently unavailable. Please try again later or specify ingredients/cuisine for more suggestions.';
-      }
-
-      return {
-        success: true,
-        response: text,
-        threadId,
-        model: 'fallback',
-        language: input.language,
-      };
-    } catch (_) {
-      const isChinese = !input.language || input.language === 'zh-CN';
-      return {
-        success: true,
-        response: isChinese
-          ? '当前模型不可用，建议您稍后重试或指定食材/菜系以获取更多建议。'
-          : 'The model is currently unavailable. Please try again later or specify ingredients/cuisine for more suggestions.',
-        threadId,
-        model: 'fallback',
-        language: input.language,
-      };
-    }
-  }
+  return {
+    success: true,
+    response: response.text || '',
+    threadId,
+    model: modelToUse,
+    language: input.language,
+  };
 }
 
 function parseQuery(search: URLSearchParams): FrontendInput {
